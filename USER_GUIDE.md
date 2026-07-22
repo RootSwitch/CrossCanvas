@@ -183,7 +183,11 @@ See the PingCanvas and SNMPCanvas guides for the poller and metric-feed setup.
 ## Arranging & aligning
 
 - **Alignment guides** appear as you drag, snapping objects to each other's
-  edges and centers. Toggle them from the toolbar; hold **Alt** to bypass.
+  edges and centers. They work while resizing too: the edge you're pulling
+  snaps to neighboring objects' edges, so matching two side-by-side zones'
+  heights is one drag - pull the second zone's top edge until the guide
+  appears at the first one's. Toggle them from the toolbar; hold **Alt** to
+  bypass (Shift-proportional resizes skip them - the locked ratio wins).
 - **Align menu** - align or evenly distribute a multi-selection.
 - **Arrange (z-order)** - bring to front / send to back / step forward / backward
   from the toolbar, Layers menu, or right-click menu. Devices and text boxes

@@ -2744,12 +2744,17 @@
     // Compare the dragged rect's edges/centers against every other node's and
     // snap each axis to the nearest match within GUIDE_SNAP. Returns the
     // adjusted position plus guide-line geometry for rendering.
-    function applyAlignmentGuides(x, y, w, h, excludeId) {
+    // offsX/offsY override which offsets of the rect participate per axis:
+    // the default (both edges + center) is the move case; a resize passes
+    // just its MOVING edge so the fixed edges never attract a snap.
+    function applyAlignmentGuides(x, y, w, h, excludeId, offsX, offsY) {
+        const xOffs = offsX || [0, w / 2, w];
+        const yOffs = offsY || [0, h / 2, h];
         let bx = null, bdx = GUIDE_SNAP + 0.5, vg = null;
         let by = null, bdy = GUIDE_SNAP + 0.5, hg = null;
         const consider = (o, ow, oh) => {
             if (o.id === excludeId) return;
-            for (const off of [0, w / 2, w]) {
+            for (const off of xOffs) {
                 for (const ox of [o.x, o.x + ow / 2, o.x + ow]) {
                     const d = Math.abs((x + off) - ox);
                     if (d < bdx) {
@@ -2758,7 +2763,7 @@
                     }
                 }
             }
-            for (const off of [0, h / 2, h]) {
+            for (const off of yOffs) {
                 for (const oy of [o.y, o.y + oh / 2, o.y + oh]) {
                     const d = Math.abs((y + off) - oy);
                     if (d < bdy) {
@@ -2810,6 +2815,35 @@
         const g = applyAlignmentGuides(x, y, w, h, id);
         showGuideLines(g.vg, g.hg);
         return { x: g.x, y: g.y };
+    }
+
+    // Guide snapping for a resize: only the MOVING edge(s) attract guides, so
+    // pulling one zone's top edge up lines it up with the neighbor's top
+    // without the fixed edges wandering. rect is the proposed (already
+    // grid-snapped) geometry; a snap that would shrink below minSize is
+    // dropped along with its guide line. Alt bypasses, same as move.
+    function guideAdjustResize(e, id, rect, axis, minSize) {
+        if (!state.showGuides || e.altKey) { clearGuideLines(); return rect; }
+        const offsX = axis === 'l' ? [0] : (axis === 'r' || axis === 'both') ? [rect.w] : [];
+        const offsY = axis === 't' ? [0] : (axis === 'b' || axis === 'both') ? [rect.h] : [];
+        const g = applyAlignmentGuides(rect.x, rect.y, rect.w, rect.h, id, offsX, offsY);
+        let { x, y, w, h } = rect;
+        if (axis === 'l') {
+            const right = x + w;
+            if (right - g.x >= minSize) { x = g.x; w = right - x; } else { g.vg = null; }
+        } else if (offsX.length) {
+            const nw = w + (g.x - x);          // shift the edge, keep the origin
+            if (nw >= minSize) { w = nw; } else { g.vg = null; }
+        }
+        if (axis === 't') {
+            const bottom = y + h;
+            if (bottom - g.y >= minSize) { y = g.y; h = bottom - y; } else { g.hg = null; }
+        } else if (offsY.length) {
+            const nh = h + (g.y - y);
+            if (nh >= minSize) { h = nh; } else { g.hg = null; }
+        }
+        showGuideLines(g.vg, g.hg);
+        return { x, y, w, h };
     }
 
     function applyGuides(on) {
@@ -3288,8 +3322,9 @@
             'turns a saved board into a live status wall, recoloring each device by reachability.</p>' +
             '<h4>Arranging &amp; aligning</h4>' +
             '<ul>' +
-            '<li><strong>Alignment guides</strong> snap objects to each other as you drag; hold ' +
-            '<kbd>Alt</kbd> to bypass.</li>' +
+            '<li><strong>Alignment guides</strong> snap objects to each other as you drag - and ' +
+            'while resizing, the edge you pull snaps to neighboring edges (match two zones\' ' +
+            'heights by dragging one\'s top to the other\'s). Hold <kbd>Alt</kbd> to bypass.</li>' +
             '<li><strong>Align menu</strong> - align or evenly distribute a multi-selection.</li>' +
             '<li><strong>Arrange</strong> - bring to front / send to back / step forward / backward.</li>' +
             '<li><strong>Layers menu</strong> - show/hide or lock each tier (Zones, Connections, ' +
@@ -4772,9 +4807,15 @@
             const dy = point.y - ri.startY;
             const delta = Math.max(dx, dy);
             const newW = Math.max(GRID_SIZE * 2, snapToGrid(ri.origW + delta, fineStep));
+            const newH = Math.max(GRID_SIZE * 2, snapToGrid(newW / ri.aspect, fineStep));
             const iw0 = ri.image.w, ih0 = ri.image.h;
-            ri.image.w = newW;
-            ri.image.h = Math.max(GRID_SIZE * 2, snapToGrid(newW / ri.aspect, fineStep));
+            // Aspect-locked corner: guide the width edge only, height follows
+            // the ratio (guiding both would fight the lock).
+            const iadj = guideAdjustResize(e, ri.image.id,
+                { x: ri.image.x, y: ri.image.y, w: newW, h: newH }, 'r', GRID_SIZE * 2);
+            ri.image.w = iadj.w;
+            ri.image.h = iadj.w === newW ? newH
+                : Math.max(GRID_SIZE * 2, Math.round(iadj.w / ri.aspect));
             if (ri.image.attachmentPoints) redistributeAPs(ri.image, iw0, ih0);
             renderImage(ri.image);
             rerouteConnectionsForDevice(ri.image.id);
@@ -4825,6 +4866,16 @@
                     rz.zone.y = newY;
                     rz.zone.h = bottom - newY;
                 }
+            }
+            // Alignment guides on the moving edge(s): the reason you resize a
+            // zone is usually to line it up with another one. Shift-
+            // proportional skips them (a snap would fight the locked ratio).
+            if (axis === 'both' && e.shiftKey) {
+                clearGuideLines();
+            } else {
+                const adj = guideAdjustResize(e, rz.zone.id,
+                    { x: rz.zone.x, y: rz.zone.y, w: rz.zone.w, h: rz.zone.h }, axis, minSize);
+                rz.zone.x = adj.x; rz.zone.y = adj.y; rz.zone.w = adj.w; rz.zone.h = adj.h;
             }
             if (rz.zone.attachmentPoints) {
                 redistributeAPs(rz.zone, zw0, zh0);
@@ -4914,6 +4965,14 @@
                     rd.device.y = newY;
                     rd.device.h = bottom - newY;
                 }
+            }
+            // Alignment guides on the moving edge(s) - same rules as zones.
+            if (axis === 'both' && e.shiftKey) {
+                clearGuideLines();
+            } else {
+                const adj = guideAdjustResize(e, rd.device.id,
+                    { x: rd.device.x, y: rd.device.y, w: rd.device.w, h: rd.device.h }, axis, minSize);
+                rd.device.x = adj.x; rd.device.y = adj.y; rd.device.w = adj.w; rd.device.h = adj.h;
             }
             redistributeAPs(rd.device, dw0, dh0);
             renderDevice(rd.device);
@@ -5232,10 +5291,10 @@
         }
         if (state.dragging || state.resizingZone || state.resizingDevice || state.resizingImage) {
             commitPreDragUndo();
+            clearGuideLines();   // moves AND resizes draw guide lines now
         }
         if (state.dragging) {
             state.dragging = null;
-            clearGuideLines();
             updateCanvasSize();
         }
         if (state.resizingZone) {
