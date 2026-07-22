@@ -5,9 +5,11 @@
 > in [PingCanvas](https://github.com/RootSwitch/PingCanvas), which can also
 > carry live SNMP readings from [SNMPCanvas](https://github.com/RootSwitch/SNMPCanvas).
 > [AlertCanvas](https://github.com/RootSwitch/AlertCanvas) turns those
-> readings into raise/clear notifications, and
+> readings into raise/clear notifications,
 > [SyslogCanvas](https://github.com/RootSwitch/SyslogCanvas) collects
-> syslog and SNMP traps from the same gear.
+> syslog and SNMP traps from the same gear, and
+> [LaunchCanvas](https://github.com/RootSwitch/LaunchCanvas) is the suite's
+> front door - one login for every app, and the place to start.
 
 **[Try the editor live in your browser](https://rootswitch.github.io/CrossCanvas/?sample=complex&fit=1)** - no install, no sign-up, nothing leaves your machine.
 
