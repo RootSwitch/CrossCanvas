@@ -1,0 +1,1683 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* ===== Styling Example palette (top bars) ===== */
+:root {
+    --se-panel: #262a33;
+    --se-panel-2: #2d323d;
+    --se-input: #1b1e25;
+    --se-border: #3a4150;
+    --se-txt: #e6e9ef;
+    --se-txt-dim: #9aa3b2;
+    --se-accent: #4c8bf5;
+    --se-active: #0066cc;
+    /* Interactive-accent for canvas selection (handles, attachment points,
+       outlines), sliders, and the segmented controls. Tracks the theme's
+       Device Color (set by the tint control); this is the classic-blue default. */
+    --se-tint: #0066cc;
+    /* Menu-bar mark port colors - brand blue/green by default; the warm
+       themes override with tan pairs so the mark sits inside their palette. */
+    --se-logo-a: #4c8bf5;
+    --se-logo-b: #2e9b57;
+    /* Dark-mode surfaces. The chrome vars above double as the dark
+       sidebar/panel palette (one source of truth - themes recolor both);
+       the canvas sits a shade darker so content still reads as "on paper". */
+    --se-canvas-dark: #20222b;
+    --se-grid-dark: #2f333f;
+}
+
+/* ===== Menu bar ===== */
+#menubar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 42px;
+    padding: 0 12px;
+    background: var(--se-panel);
+    border-bottom: 1px solid var(--se-border);
+    color: var(--se-txt);
+    position: relative;
+    z-index: 200;
+    flex-shrink: 0;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.brand .logo {
+    /* The faceplate mark (inline SVG): the chassis stroke is currentColor so
+       it follows the theme accent; the port colors are the fixed brand
+       blue/green. */
+    color: var(--se-accent);
+    display: inline-flex;
+    align-items: center;
+}
+
+.brand-name {
+    letter-spacing: 0.2px;
+}
+
+.doc-name-input {
+    width: 170px;
+    padding: 3px 7px;
+    background: var(--se-input);
+    border: 1px solid var(--se-border);
+    border-radius: 4px;
+    color: var(--se-txt);
+    font-size: 13px;
+    font-weight: 400;
+    font-family: inherit;
+}
+
+.doc-name-input:focus {
+    outline: none;
+    border-color: var(--se-accent);
+}
+
+.doc-version {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    font-size: 12px;
+    color: var(--se-txt-dim);
+}
+
+.doc-version input {
+    width: 44px;
+    padding: 3px 4px;
+    background: var(--se-input);
+    border: 1px solid var(--se-border);
+    border-radius: 4px;
+    color: var(--se-txt);
+    font-size: 12px;
+    font-family: inherit;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+.dirty-indicator {
+    color: var(--se-accent);
+    font-size: 15px;
+    line-height: 1;
+    display: none;
+}
+
+.dirty-indicator.visible {
+    display: inline;
+}
+
+/* menus */
+.menu {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: 100%;
+}
+
+.menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.menu-label {
+    padding: 5px 11px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--se-txt);
+}
+
+.menu-item:hover .menu-label,
+.menu-item.open .menu-label {
+    background: var(--se-panel-2);
+}
+
+.menu-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 2px;
+    min-width: 230px;
+    padding: 5px 0;
+    background: var(--se-panel);
+    border: 1px solid var(--se-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    z-index: 300;
+}
+
+.menu-item.open .menu-dropdown {
+    display: block;
+}
+
+.menu-dropdown button,
+.menu-flyout button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px 14px;
+    gap: 24px;
+    border: none;
+    background: none;
+    color: var(--se-txt);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.menu-dropdown button:hover,
+.menu-flyout button:hover,
+.menu-sub:hover > .has-sub {
+    background: var(--se-accent);
+    color: #fff;
+}
+
+.shortcut-key {
+    color: var(--se-txt-dim);
+    font-size: 11px;
+}
+
+.menu-dropdown button:hover .shortcut-key {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.menu-separator {
+    height: 1px;
+    background: var(--se-border);
+    margin: 4px 8px;
+}
+
+.menu-flyout button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.menu-flyout button:disabled:hover {
+    background: none;
+    color: var(--se-txt);
+}
+
+/* Canvas tier rows (Layers menu): per-tier visibility & lock */
+.tier-header {
+    padding: 2px 14px 4px;
+    font-size: 10px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--se-txt-dim);
+}
+
+.tier-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 14px;
+    font-size: 13px;
+    color: var(--se-txt);
+}
+
+.menu-dropdown .tier-row button {
+    width: 22px;
+    padding: 2px 0;
+    justify-content: center;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.menu-dropdown .tier-row button:hover {
+    background: var(--se-accent);
+}
+
+.tier-row .tier-lock { opacity: 0.35; }
+.tier-row.tier-locked .tier-lock { opacity: 1; }
+.tier-row.tier-hidden .tier-eye { opacity: 0.3; }
+.tier-row.tier-hidden .tier-name { opacity: 0.45; }
+
+/* Compact font blocks in the property panels */
+.font-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.font-row + .font-row {
+    margin-top: 6px;
+}
+
+.font-row select {
+    flex: 1;
+    min-width: 0;
+}
+
+.font-row .font-family-select {
+    flex: 1.5;
+}
+
+/* App modal (native <dialog>) - themed replacement for alert()/prompt() */
+#app-dialog {
+    margin: auto;   /* re-center: the global margin reset clobbers the UA default */
+    min-width: 320px;
+    max-width: 460px;
+    padding: 16px 18px;
+    border: 1px solid var(--se-border);
+    border-radius: 8px;
+    background: var(--se-panel);
+    color: var(--se-txt);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+#app-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.35);
+}
+
+/* Wide + tall variant for the Help documents */
+#app-dialog.wide {
+    max-width: 760px;
+    width: 90vw;
+}
+#app-dialog.wide .dialog-body {
+    max-height: 72vh;
+}
+
+/* Embedded Help / User Guide typography - self-contained, theme-aware */
+.help-doc { font-size: 13px; line-height: 1.5; }
+.help-nav {
+    display: flex; flex-wrap: wrap; gap: 4px 14px;
+    padding-bottom: 8px; margin-bottom: 10px;
+    border-bottom: 1px solid var(--se-border);
+    font-size: 12px;
+}
+.help-nav button {
+    background: none; border: none; padding: 0; cursor: pointer;
+    color: var(--se-accent); font-size: 12px; font-family: inherit;
+}
+.help-nav button:hover { text-decoration: underline; }
+.help-nav span { font-weight: 600; font-size: 12px; }
+.help-doc h4 {
+    margin: 18px 0 6px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--se-border);
+    padding-bottom: 3px;
+}
+.help-doc h4:first-child { margin-top: 0; }
+.help-doc p { margin: 6px 0; }
+.help-doc ul, .help-doc ol { margin: 6px 0; padding-left: 22px; }
+.help-doc li { margin: 3px 0; }
+.help-doc kbd {
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    background: rgba(128, 128, 128, 0.18);
+    border: 1px solid var(--se-border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    white-space: nowrap;
+}
+.help-doc code {
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    background: rgba(128, 128, 128, 0.15);
+    border-radius: 3px;
+    padding: 1px 4px;
+}
+.help-doc table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+}
+.help-doc th, .help-doc td {
+    border: 1px solid var(--se-border);
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: top;
+}
+.help-doc th { background: rgba(128, 128, 128, 0.12); font-weight: 600; }
+.help-doc .help-lead { opacity: 0.8; }
+
+/* Inventory column mapper + Paste Inventory dialogs */
+.inv-map-scroll {
+    overflow: auto;
+    max-height: 40vh;
+    border: 1px solid var(--se-border);
+    border-radius: 5px;
+    margin-top: 10px;
+}
+.inv-map-table {
+    border-collapse: collapse;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.inv-map-table th, .inv-map-table td {
+    border: 1px solid var(--se-border);
+    padding: 3px 8px;
+    text-align: left;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.inv-map-table select {
+    width: 100%;
+    min-width: 110px;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 2px 4px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    color: #333;
+}
+.inv-map-table .inv-map-header {
+    background: rgba(128, 128, 128, 0.12);
+    font-weight: 600;
+}
+.inv-map-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+.inv-map-count, .inv-paste-headers { margin-right: auto; opacity: 0.75; font-size: 12px; }
+.inv-paste-headers { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.inv-paste-text {
+    width: 100%;
+    min-height: 240px;
+    box-sizing: border-box;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    padding: 8px;
+    border: 1px solid var(--se-border);
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    resize: vertical;
+}
+#app-dialog .dialog-btn[disabled] { opacity: 0.45; pointer-events: none; }
+
+/* Recolor-to-theme scope picker: one checkbox row per object kind */
+.recolor-scope-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; cursor: pointer; }
+.recolor-scope-row input { margin: 0; }
+
+#app-dialog .dialog-title {
+    margin: 0 0 10px;
+    font-size: 15px;
+}
+
+#app-dialog .dialog-body {
+    font-size: 13px;
+    line-height: 1.45;
+    max-height: 55vh;
+    overflow-y: auto;
+}
+
+#app-dialog .dialog-body .dialog-line {
+    min-height: 1em;
+}
+
+#app-dialog .dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+#app-dialog .dialog-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--se-border);
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+#app-dialog .dialog-btn:hover {
+    background: rgba(128, 128, 128, 0.15);
+}
+
+#app-dialog .dialog-btn.primary {
+    background: var(--se-accent);
+    border-color: var(--se-accent);
+    color: #fff;
+}
+
+#app-dialog .dialog-list-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    margin-top: 6px;
+    border: 1px solid var(--se-border);
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+#app-dialog .dialog-list-item:hover {
+    background: var(--se-accent);
+    border-color: var(--se-accent);
+    color: #fff;
+}
+
+#app-dialog .dialog-list-item .dialog-item-note {
+    opacity: 0.65;
+    font-size: 12px;
+}
+
+/* Outranks the generic .panel-section input[type="color"] full-width rule */
+.panel-section .font-row input[type="color"] {
+    width: 34px;
+    height: 26px;
+    padding: 1px;
+    flex: none;
+}
+
+/* Default Settings color bars match the Properties-panel look: a wide swatch
+   stretching to the Reset button on the right edge */
+#default-device-tint,
+#default-device-bg,
+#default-zone-fill,
+#default-zone-border {
+    flex: 1;
+    height: 32px;
+    padding: 1px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.mini-label {
+    font-size: 11px;
+    color: #888;
+    flex: none;
+}
+
+.align-seg {
+    display: flex;
+    flex: 1;
+    border: 1px solid rgba(128, 128, 128, 0.45);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.align-seg button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.align-seg button + button {
+    border-left: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.align-seg button:hover {
+    background: rgba(128, 128, 128, 0.18);
+}
+
+.align-seg button.active {
+    background: var(--se-tint);
+    color: #fff;
+}
+
+body.dark-mode .mini-label {
+    color: var(--se-dk-txt-dim, var(--se-txt-dim));
+}
+
+/* submenus / flyouts */
+.menu-sub {
+    position: relative;
+}
+
+.sub-arrow {
+    color: var(--se-txt-dim);
+    font-size: 15px;
+    line-height: 1;
+}
+
+.menu-sub:hover > .has-sub .sub-arrow {
+    color: #fff;
+}
+
+.menu-flyout {
+    display: none;
+    position: absolute;
+    top: -6px;
+    left: 100%;
+    min-width: 170px;
+    padding: 5px 0;
+    background: var(--se-panel);
+    border: 1px solid var(--se-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.menu-sub:hover .menu-flyout {
+    display: block;
+}
+
+.menu-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.topbar-btn {
+    padding: 5px 12px;
+    background: var(--se-panel-2);
+    border: 1px solid var(--se-border);
+    border-radius: 5px;
+    color: var(--se-txt);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.topbar-btn:hover {
+    background: #353b48;
+    border-color: #4a5263;
+}
+
+#toolbar {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    background: var(--se-panel);
+    border-bottom: 1px solid var(--se-border);
+    gap: 4px;
+    z-index: 100;
+    flex-shrink: 0;
+}
+
+.tool-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    color: var(--se-txt-dim);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+
+.tool-btn:hover {
+    background: var(--se-panel-2);
+    color: var(--se-txt);
+}
+
+.tool-btn.active {
+    background: var(--se-active, #0066cc);
+    color: #fff;
+}
+
+/* Theme picker sits with the appearance controls (next to Dark) and wears
+   the chrome palette it switches */
+#theme-select {
+    background: var(--se-input);
+    color: var(--se-txt);
+    border: 1px solid var(--se-border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+#theme-select:hover {
+    border-color: var(--se-accent);
+}
+
+/* Collapsible panel sections (Device Properties / Device Details) share the
+   sidebar section-header look (arrow left, rotate on collapse) */
+#device-details-header {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+}
+body.dark-mode #device-details-header {
+    border-top-color: var(--se-dk-border, var(--se-border));
+}
+.device-field-row {
+    margin-bottom: 4px;
+}
+.device-field-row .device-field-key,
+.device-field-row .device-field-value {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}
+.device-field-row .device-field-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: #666;
+}
+body.dark-mode .device-field-row .device-field-name {
+    color: var(--se-dk-txt-dim, var(--se-txt-dim));
+}
+.device-field-row .device-field-remove {
+    border: none;
+    background: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 2px;
+}
+.device-field-row .device-field-remove:hover {
+    color: #d9534f;
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 24px;
+    background: var(--se-border);
+    margin: 0 6px;
+}
+
+.doc-version input::-webkit-inner-spin-button,
+.doc-version input::-webkit-outer-spin-button {
+    opacity: 1;
+}
+
+#sidebar {
+    position: fixed;
+    left: 0;
+    top: 92px; /* menubar (43px) + toolbar (49px) */
+    bottom: 0;
+    width: 240px;
+    background: #f5f5f5;
+    border-right: 1px solid #ddd;
+    padding: 12px;
+    overflow-y: auto;
+    z-index: 50;
+}
+
+#sidebar h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+#device-search {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 10px;
+    background: white;
+}
+
+.default-size-control {
+    margin-bottom: 8px;
+}
+
+.default-size-control label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+.default-size-control input[type="range"] {
+    width: 100%;
+}
+
+/* Range sliders take the theme accent (they'd otherwise show the browser's
+   default blue, which fights warm themes like Parchment). */
+input[type="range"] {
+    accent-color: var(--se-tint);
+}
+
+#device-list,
+#shape-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+/* Category groups inside the device palette. The group is a full-width row
+   of the flex container; its own grid repeats the palette's flex layout. */
+.stencil-cat {
+    flex-basis: 100%;
+}
+
+.stencil-cat-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #777;
+    margin: 2px 0 6px;
+}
+
+.stencil-cat-header:hover {
+    color: #333;
+}
+
+.stencil-cat-header.collapsed .collapse-arrow {
+    transform: rotate(-90deg);
+}
+
+.stencil-cat-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+body.dark-mode #sidebar .stencil-cat-header {
+    color: var(--se-dk-txt-dim, var(--se-txt-dim));
+}
+
+body.dark-mode #sidebar .stencil-cat-header:hover {
+    color: var(--se-dk-txt, var(--se-txt));
+}
+
+.device-thumb {
+    width: 60px;
+    height: 60px;
+    /* The bundled icons are borderless glyphs - the thumb draws the set's
+       frame (blue rounded border on white), like the canvas renderer does */
+    border: 3px solid rgb(45, 103, 185);
+    border-radius: 8px;
+    background: rgb(255, 254, 254);
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+
+.device-thumb:hover {
+    border-color: var(--se-tint);
+}
+
+.device-thumb-wrapper {
+    position: relative;
+}
+
+.device-delete-btn {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    background: #d9534f;
+    color: white;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    cursor: pointer;
+    padding: 0;
+    display: none;
+    z-index: 1;
+}
+
+.device-thumb-wrapper:hover .device-delete-btn {
+    display: block;
+}
+
+.device-thumb img {
+    max-width: 50px;
+    max-height: 50px;
+    object-fit: contain;
+}
+
+.sidebar-btn {
+    width: 100%;
+    padding: 8px;
+    border: 2px dashed #ccc;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #666;
+    transition: all 0.15s;
+}
+
+.sidebar-btn:hover {
+    border-color: var(--se-tint);
+    color: var(--se-tint);
+}
+
+.panel-section {
+    margin-bottom: 12px;
+}
+
+.panel-section label {
+    display: block;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.panel-section select,
+.panel-section input[type="text"],
+.panel-section input[type="number"] {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    background: white;
+}
+
+/* Batch-edit panel: per-type sections, each a labelled group of controls. */
+.batch-group {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(128, 128, 128, 0.3);
+}
+.batch-group h4 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.75;
+}
+
+/* Dashed outline drawn around a fully-selected group */
+.group-outline {
+    fill: none;
+    stroke: #7c4dff;
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    pointer-events: none;
+}
+
+/* Alignment guide lines shown while dragging with guides enabled */
+.align-guide {
+    stroke: #e91e63;
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+    pointer-events: none;
+}
+
+/* Right-click context menu */
+.context-menu, .context-flyout {
+    position: fixed;
+    z-index: 10000;
+    min-width: 180px;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    padding: 4px;
+    font-size: 13px;
+    user-select: none;
+}
+.context-flyout { position: absolute; top: -5px; left: 100%; }
+.context-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    color: #222;
+}
+.context-item:hover { background: #eef2f7; }
+.context-item.disabled { color: #aaa; cursor: default; }
+.context-item.disabled:hover { background: transparent; }
+.context-sep { height: 1px; background: rgba(0, 0, 0, 0.1); margin: 4px 6px; }
+.context-arrow { opacity: 0.6; }
+.context-key { margin-left: auto; padding-left: 28px; opacity: 0.5; font-size: 12px; }
+.context-item.has-sub > .context-flyout { display: none; }
+.context-item.has-sub:hover > .context-flyout { display: block; }
+
+body.dark-mode .context-menu, body.dark-mode .context-flyout {
+    background: var(--se-dk-panel-2, var(--se-panel-2));
+    border-color: var(--se-dk-border, var(--se-border));
+    color: var(--se-dk-txt, var(--se-txt));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+body.dark-mode .context-item { color: var(--se-txt); }
+body.dark-mode .context-item:hover { background: var(--se-border); }
+body.dark-mode .context-item.disabled { color: #6a6a80; }
+body.dark-mode .context-sep { background: rgba(255, 255, 255, 0.12); }
+
+.panel-section input[type="color"] {
+    width: 100%;
+    height: 32px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 2px;
+}
+
+.small-btn {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: 8px;
+}
+
+.small-btn:hover {
+    background: #e8e8e8;
+}
+
+#ap-count {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+#canvas-container {
+    flex: 1;
+    margin-left: 240px;
+    margin-top: 0;
+    overflow: auto;
+    position: relative;
+    user-select: none;
+}
+
+#canvas-container.pan-mode {
+    cursor: grab;
+}
+
+#canvas-container.pan-mode.panning {
+    cursor: grabbing;
+}
+
+/* Armed text tool: the next canvas click places a text box */
+#canvas-container.text-mode,
+#canvas-container.text-mode svg,
+#canvas-container.text-mode svg * {
+    cursor: text;
+}
+
+#canvas {
+    display: block;
+}
+
+.toolbar-zoom {
+    color: #ccc;
+    font-size: 12px;
+    min-width: 42px;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    padding: 0 2px;
+}
+
+.tool-btn.zoom-btn {
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.toolbar-zoom:hover {
+    color: #fff;
+}
+
+.device-node {
+    cursor: move;
+}
+
+.device-selection-outline {
+    display: none;
+    pointer-events: none;
+}
+
+.device-node.selected .device-selection-outline,
+.device-node.multi-selected .device-selection-outline {
+    display: block;
+    stroke: var(--se-tint);
+    stroke-width: 2;
+    stroke-dasharray: 4 2;
+}
+
+.attachment-point {
+    fill: var(--se-tint);
+    stroke: white;
+    stroke-width: 2;
+    cursor: crosshair;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.device-node:hover .attachment-point,
+.device-node.selected .attachment-point,
+.zone-node:hover .attachment-point,
+.zone-node.selected .attachment-point,
+.image-node:hover .attachment-point,
+.image-node.selected .attachment-point {
+    opacity: 1;
+}
+
+.attachment-point:hover {
+    fill: #ff4444;
+    transform-origin: center;
+}
+
+.connection-line {
+    fill: none;
+    cursor: pointer;
+}
+
+.connection-line:hover {
+    filter: drop-shadow(0 0 3px rgba(0, 102, 204, 0.5));
+}
+
+.connection-line.selected {
+    filter: drop-shadow(0 0 4px rgba(0, 102, 204, 0.8));
+}
+
+.temp-line {
+    fill: none;
+    stroke: var(--se-tint);
+    stroke-width: 2;
+    stroke-dasharray: 5 3;
+    pointer-events: none;
+}
+
+.scale-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.scale-controls .small-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 26px;
+    margin-left: 0;
+}
+
+#device-w-input,
+#device-h-input {
+    width: 54px;
+    padding: 4px 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.sidebar-section {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+}
+
+.sidebar-section:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+.section-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.section-header:hover {
+    color: #333;
+}
+
+.collapse-arrow {
+    font-size: 9px;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.section-header.collapsed .collapse-arrow {
+    transform: rotate(-90deg);
+}
+
+.section-content {
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+}
+
+.section-content.collapsed {
+    max-height: 0 !important;
+    overflow: hidden;
+}
+
+#textbox-panel {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #ddd;
+}
+
+.rich-label-editor {
+    width: 100%;
+    min-height: 2.6em;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    background: white;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-y: auto;
+    max-height: 120px;
+    cursor: text;
+    user-select: text;
+}
+
+.rich-label-editor:focus {
+    outline: 2px solid var(--se-tint);
+    outline-offset: -1px;
+}
+
+.rich-label-editor:empty::before {
+    content: attr(data-placeholder);
+    color: #999;
+    pointer-events: none;
+}
+
+.shape-thumb {
+    cursor: grab;
+}
+
+.zone-node {
+    cursor: move;
+}
+
+.zone-node.selected .zone-shape,
+.zone-node.multi-selected .zone-shape {
+    stroke-dasharray: 6 3;
+}
+
+.zone-resize-handle {
+    fill: white;
+    stroke: var(--se-tint);
+    stroke-width: 1.5;
+    opacity: 0;
+}
+
+.zone-node.selected .zone-resize-handle {
+    opacity: 1;
+}
+
+.device-resize-handle {
+    fill: white;
+    stroke: var(--se-tint);
+    stroke-width: 1.5;
+    cursor: nwse-resize;
+    opacity: 0;
+}
+
+.device-node.selected .device-resize-handle,
+.device-node:hover .device-resize-handle {
+    opacity: 1;
+}
+
+/* Connect mode is about wiring, not sizing: hide the resize handles so they
+   don't sit on top of the attachment points (making the small AP dots hard to
+   hit) or intercept a connect-drag. They return the moment you're in select. */
+#canvas-container.connect-mode .device-resize-handle,
+#canvas-container.connect-mode .zone-resize-handle,
+#canvas-container.connect-mode .image-resize-handle {
+    display: none;
+}
+
+.panel-section input[type="range"] {
+    width: 100%;
+}
+
+#zone-panel {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #ddd;
+}
+
+.marquee-rect {
+    fill: color-mix(in srgb, var(--se-tint) 10%, transparent);
+    stroke: var(--se-tint);
+    stroke-width: 1;
+    stroke-dasharray: 4 2;
+    pointer-events: none;
+}
+
+
+.conn-bend-handle {
+    fill: white;
+    stroke: var(--se-tint);
+    stroke-width: 1.5;
+    opacity: 0.9;
+}
+
+.conn-bend-handle:hover {
+    fill: #cce0ff;
+    stroke: #0044aa;
+}
+
+.conn-endpoint-handle {
+    fill: var(--se-tint);
+    stroke: white;
+    stroke-width: 2;
+    opacity: 0.9;
+    cursor: grab;
+}
+
+.conn-endpoint-handle:hover {
+    fill: #ff4444;
+}
+
+.textbox-node {
+    cursor: move;
+}
+
+.textbox-node.selected .textbox-border {
+    stroke: var(--se-tint);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 2;
+}
+
+.textbox-node.multi-selected .textbox-border {
+    stroke: var(--se-tint);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 2;
+}
+
+.image-node {
+    cursor: move;
+}
+
+.image-node.selected .image-border {
+    stroke: var(--se-tint);
+    stroke-width: 2;
+    stroke-dasharray: 4 2;
+}
+
+.image-resize-handle {
+    fill: white;
+    stroke: var(--se-tint);
+    stroke-width: 1.5;
+    cursor: nwse-resize;
+    opacity: 0;
+}
+
+.image-node.selected .image-resize-handle {
+    opacity: 1;
+}
+
+#connection-panel,
+#device-panel {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #ddd;
+}
+
+.connection-annotation,
+.connection-annotation-bg {
+    cursor: grab;
+}
+
+.inline-editor {
+    position: absolute;
+    min-width: 40px;
+    min-height: 1em;
+    outline: 2px solid var(--se-tint);
+    border-radius: 2px;
+    background: white;
+    padding: 2px 4px;
+    font-family: sans-serif;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    z-index: 200;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    user-select: text;
+    cursor: text;
+}
+
+/* ===== Dark mode (left sidebar + canvas) - Menu Example palette ===== */
+body.dark-mode #sidebar {
+    background: var(--se-dk-panel, var(--se-panel));
+    border-right-color: var(--se-dk-border, var(--se-border));
+    color: var(--se-dk-txt, var(--se-txt));
+}
+
+body.dark-mode #sidebar h3,
+body.dark-mode #sidebar label,
+body.dark-mode #sidebar .section-header,
+body.dark-mode #sidebar .default-size-control label {
+    color: var(--se-dk-txt-dim, var(--se-txt-dim));
+}
+
+body.dark-mode #sidebar input[type="text"],
+body.dark-mode #sidebar input[type="number"],
+body.dark-mode #sidebar input[type="search"],
+body.dark-mode #sidebar select,
+body.dark-mode #sidebar textarea,
+body.dark-mode #sidebar .rich-label-editor,
+body.dark-mode #device-search {
+    background: var(--se-dk-input, var(--se-input));
+    color: var(--se-dk-txt, var(--se-txt));
+    border-color: var(--se-dk-border, var(--se-border));
+}
+
+body.dark-mode #sidebar .sidebar-btn,
+body.dark-mode #sidebar .small-btn {
+    background: var(--se-dk-panel-2, var(--se-panel-2));
+    color: var(--se-dk-txt, var(--se-txt));
+    border-color: var(--se-dk-border, var(--se-border));
+}
+
+body.dark-mode #sidebar .sidebar-btn:hover,
+body.dark-mode #sidebar .small-btn:hover {
+    background: var(--se-dk-border, var(--se-border));
+}
+
+body.dark-mode #sidebar .sidebar-section,
+body.dark-mode #sidebar #zone-panel,
+body.dark-mode #sidebar #textbox-panel,
+body.dark-mode #sidebar #connection-panel,
+body.dark-mode #sidebar #device-panel,
+body.dark-mode #sidebar #image-panel {
+    border-color: var(--se-dk-border, var(--se-border));
+}
+
+/* keep device thumbnails light so icons stay legible */
+body.dark-mode #sidebar .device-thumb {
+    background: #fff;
+    border-color: var(--se-dk-border, var(--se-border));
+}
+
+body.dark-mode #canvas-container {
+    background: var(--se-canvas-dark);
+}
+
+body.dark-mode #canvas-bg {
+    fill: var(--se-canvas-dark);
+}
+
+body.dark-mode #grid-line {
+    stroke: var(--se-grid-dark);
+}
+
+/* Flip black/near-black device labels to white for legibility on the dark canvas */
+body.dark-mode .device-label-adaptive {
+    fill: #ffffff;
+}
+
+.panel-hint {
+    margin-top: 10px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: #888;
+}
+
+.panel-hint kbd {
+    font-family: inherit;
+    font-size: 10px;
+    background: #eee;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    padding: 0 4px;
+    color: #555;
+}
+
+body.dark-mode .panel-hint {
+    color: var(--se-dk-txt-dim, var(--se-txt-dim));
+}
+
+body.dark-mode .panel-hint kbd {
+    background: var(--se-dk-panel-2, var(--se-panel-2));
+    border-color: var(--se-dk-border, var(--se-border));
+    color: var(--se-dk-txt-dim, var(--se-txt-dim));
+}
+
+/* ===== Right-side Properties pane ===== */
+#right-pane {
+    position: fixed;
+    right: 0;
+    top: 92px; /* menubar (43px) + toolbar (49px) */
+    bottom: 0;
+    width: 260px;
+    background: #f5f5f5;
+    border-left: 1px solid #ddd;
+    padding: 12px;
+    overflow-y: auto;
+    z-index: 50;
+    display: none;
+}
+
+#right-pane.visible {
+    display: block;
+}
+
+body.right-pane-open #canvas-container {
+    margin-right: 260px;
+}
+
+/* Panel header styling works wherever the host lives (sidebar or right pane) */
+#properties-host h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+/* In the right pane a panel is shown on its own, so drop the divider that
+   separated it from the device library in the left sidebar */
+#right-pane #device-panel,
+#right-pane #zone-panel,
+#right-pane #textbox-panel,
+#right-pane #connection-panel {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+/* Dark mode for the right pane + the movable property panels */
+body.dark-mode #right-pane {
+    background: var(--se-dk-panel, var(--se-panel));
+    border-left-color: var(--se-dk-border, var(--se-border));
+    color: var(--se-dk-txt, var(--se-txt));
+}
+
+body.dark-mode #properties-host h3,
+body.dark-mode #properties-host label {
+    color: var(--se-dk-txt-dim, var(--se-txt-dim));
+}
+
+body.dark-mode #properties-host input[type="text"],
+body.dark-mode #properties-host input[type="number"],
+body.dark-mode #properties-host select,
+body.dark-mode #properties-host textarea,
+body.dark-mode #properties-host .rich-label-editor {
+    background: var(--se-dk-input, var(--se-input));
+    color: var(--se-dk-txt, var(--se-txt));
+    border-color: var(--se-dk-border, var(--se-border));
+}
+
+body.dark-mode #properties-host .small-btn {
+    background: var(--se-dk-panel-2, var(--se-panel-2));
+    color: var(--se-dk-txt, var(--se-txt));
+    border-color: var(--se-dk-border, var(--se-border));
+}
+
+body.dark-mode #properties-host .small-btn:hover {
+    background: var(--se-dk-border, var(--se-border));
+}
+
+/* --- Find on canvas (Ctrl+F) --- */
+#canvas-find {
+    position: fixed;
+    left: 252px;
+    top: 104px;
+    z-index: 900;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    background: var(--se-panel);
+    border: 1px solid var(--se-border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+#canvas-find input {
+    width: 180px;
+    background: var(--se-input);
+    color: var(--se-txt);
+    border: 1px solid var(--se-border);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 13px;
+}
+#canvas-find-count {
+    font-size: 12px;
+    color: var(--se-txt-dim);
+    min-width: 34px;
+    text-align: right;
+}
+body.dark-mode #canvas-find {
+    background: var(--se-dk-panel, var(--se-panel));
+    border-color: var(--se-dk-border, var(--se-border));
+}
+body.dark-mode #canvas-find input {
+    background: var(--se-dk-input, var(--se-input));
+    color: var(--se-dk-txt, var(--se-txt));
+    border-color: var(--se-dk-border, var(--se-border));
+}
+body.dark-mode #canvas-find-count {
+    color: var(--se-dk-txt-dim, var(--se-txt-dim));
+}
+
+/* Icon-filter inputs above the icon-swap selects */
+.icon-filter {
+    width: 100%;
+    margin-bottom: 4px;
+}
+
+/* Locked right pane, nothing selected */
+#right-pane-hint {
+    padding: 18px 14px;
+    font-size: 12px;
+    color: var(--se-txt-dim);
+    text-align: center;
+}
+
+/* --- Small screens: viewing-first ---------------------------------------
+   Editing stays a desktop feature (documented scope); phones mostly arrive
+   from the demo link to LOOK. The sidebar starts hidden so the canvas gets
+   the full width; the toolbar's list button slides it over the canvas. */
+#btn-mobile-sidebar { display: none; }
+@media (max-width: 700px) {
+    #btn-mobile-sidebar { display: inline-flex; }
+    #sidebar { display: none; }
+    body.mobile-sidebar-open #sidebar {
+        display: block;
+        width: min(280px, 85vw);
+        box-shadow: 4px 0 14px rgba(0, 0, 0, 0.3);
+    }
+    #canvas-container { margin-left: 0; }
+    /* Menu bar: the title/version boxes and the Properties dock toggle
+       (an editing control) don't fit beside seven menus - the menus and
+       the theme picker matter more on a phone. The bar WRAPS to a second
+       row rather than scrolling, because a scrolling bar would clip the
+       dropdowns. */
+    .doc-name-input, .doc-version, #btn-props-side { display: none; }
+    #menubar { height: auto; flex-wrap: wrap; padding: 4px 8px; gap: 4px 10px; }
+    /* .menu is height:100% for the desktop bar - that stretches it across
+       the wrapped rows and floats .menu-right over the toolbar. */
+    .menu { height: auto; flex-wrap: wrap; }
+    .menu-right { margin-left: 0; }
+}
+
+/* One-time notice for small screens (dismiss stored in localStorage) */
+.mobile-notice {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 14px;
+    z-index: 400;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    background: var(--se-panel);
+    color: var(--se-txt);
+    border: 1px solid var(--se-border);
+    border-radius: 8px;
+    padding: 10px 8px 10px 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    /* Android font boosting inflated the text on real devices until it
+       wrapped mid-sentence; pinning size-adjust turns the boosting off. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+.mobile-notice-text {
+    flex: 1;
+    min-width: 0;
+}
+.mobile-notice button {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--se-txt-dim);
+    font-size: 20px;
+    line-height: 1;
+    padding: 2px 10px 8px;
+    cursor: pointer;
+}

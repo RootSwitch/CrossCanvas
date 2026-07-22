@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- CrossCanvas mark: an easel holding a board of six zones in the Canvas
+       theme's tans. PingCanvas carries the same easel with the top-middle
+       and top-right zones red-washed (down). -->
+  <rect width="64" height="64" rx="12" fill="#262a33"/>
+  <path d="M32 5 L32 12" stroke="#a89e8f" stroke-width="4" stroke-linecap="round"/>
+  <path d="M18 45 L12 59 M46 45 L52 59 M32 45 L32 59" stroke="#a89e8f" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <rect x="9" y="12" width="46" height="34" rx="3" fill="#f4f1ea" stroke="#a89e8f" stroke-width="3"/>
+  <g fill="none" stroke-width="2.6">
+    <rect x="14.5" y="18.5" width="9" height="8" rx="1.5" stroke="#c49b5f"/>
+    <rect x="27.5" y="18.5" width="9" height="8" rx="1.5" stroke="#8f6a38"/>
+    <rect x="40.5" y="18.5" width="9" height="8" rx="1.5" stroke="#c49b5f"/>
+    <rect x="14.5" y="31.5" width="9" height="8" rx="1.5" stroke="#8f6a38"/>
+    <rect x="27.5" y="31.5" width="9" height="8" rx="1.5" stroke="#c49b5f"/>
+    <rect x="40.5" y="31.5" width="9" height="8" rx="1.5" stroke="#8f6a38"/>
+  </g>
+</svg>

@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrossCanvas Diagram Editor</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="menubar">
+            <div class="brand">
+                <span class="logo"><svg viewBox="0 0 64 64" width="17" height="17" aria-hidden="true"><path d="M32 5 L32 12 M18 45 L12 59 M46 45 L52 59 M32 46 L32 59" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" fill="none"/><rect x="9" y="12" width="46" height="34" rx="3" fill="var(--se-input)" stroke="currentColor" stroke-width="3.5"/><g fill="none" stroke-width="3"><rect x="14.5" y="18.5" width="9" height="8" rx="1.5" stroke="var(--se-logo-a)"/><rect x="27.5" y="18.5" width="9" height="8" rx="1.5" stroke="var(--se-logo-b)"/><rect x="40.5" y="18.5" width="9" height="8" rx="1.5" stroke="var(--se-logo-a)"/><rect x="14.5" y="31.5" width="9" height="8" rx="1.5" stroke="var(--se-logo-b)"/><rect x="27.5" y="31.5" width="9" height="8" rx="1.5" stroke="var(--se-logo-a)"/><rect x="40.5" y="31.5" width="9" height="8" rx="1.5" stroke="var(--se-logo-b)"/></g></svg></span>
+                <span class="brand-name">CrossCanvas</span>
+                <input type="text" id="diagram-title" class="doc-name-input" value="network-diagram" spellcheck="false" title="Diagram name">
+                <span class="doc-version">v<input type="number" id="diagram-version" value="1" min="1" step="1" title="Version"></span>
+                <span id="dirty-indicator" class="dirty-indicator" title="Unsaved changes">&#9679;</span>
+            </div>
+
+            <nav class="menu">
+                <div class="menu-item" data-menu="file">
+                    <span class="menu-label">File</span>
+                    <div class="menu-dropdown">
+                        <button data-action="new" title="Clear the canvas and start a fresh diagram"><span>New</span></button>
+                        <button data-action="open" title="Open a .xcanvas file, or import Gliffy (.gliffy), Visio (.vsdx / .vsdm), or draw.io (.drawio) - replaces the current canvas"><span>Open / Import Diagram&hellip;</span><span class="shortcut-key">Ctrl+O</span></button>
+                        <div class="menu-sub">
+                            <button class="has-sub" title="Reopen one of the last 10 diagrams you saved or opened"><span>Open Recent</span><span class="sub-arrow">&rsaquo;</span></button>
+                            <div class="menu-flyout" id="recent-flyout"></div>
+                        </div>
+                        <button data-action="merge" title="Add another diagram to this canvas instead of replacing it - any import format; the new content lands to the right, and one undo removes it"><span>Import &amp; Merge&hellip;</span></button>
+                        <button data-action="import-inventory" title="Turn a device list into a laid-out starting diagram - vendor CSVs (Catalyst Center, ISE, NetBox), DHCP lease files, DNS zone exports, and pasted arp or nmap output are all detected automatically"><span>Import Inventory&hellip;</span></button>
+                        <button data-action="paste-inventory" title="Same importer, no file - paste cells copied from Excel / LibreOffice / Sheets, CSV text, or arp / nmap output; unknown columns open a mapping step"><span>Paste Inventory&hellip;</span></button>
+                        <button data-action="convert-diagrams" title="Batch-convert a multi-selection of .gliffy and .drawio files to .xcanvas"><span>Convert Diagrams&hellip;</span></button>
+                        <button data-action="load-sample" title="A small example diagram (replaces the canvas)"><span>Load Sample</span></button>
+                        <button data-action="load-complex-sample" title="A multi-site showcase diagram (replaces the canvas)"><span>Load Complex Sample</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="save" title="Write the diagram as a .xcanvas file - the title sets the filename and the version auto-increments"><span>Save</span><span class="shortcut-key">Ctrl+S</span></button>
+                        <button data-action="save-embedded" title="Self-contained file: embeds library icons instead of referencing them - larger, but opens with full icons anywhere"><span>Save with Embedded Images</span></button>
+                    </div>
+                </div>
+
+                <div class="menu-item" data-menu="export">
+                    <span class="menu-label">Export</span>
+                    <div class="menu-dropdown">
+                        <div class="menu-sub">
+                            <button class="has-sub" title="Cropped to the diagram on a clean background - no grid lines"><span>Export Without Grid</span><span class="sub-arrow">&rsaquo;</span></button>
+                            <div class="menu-flyout">
+                                <button data-action="export-nogrid-png" title="Lossless image - the go-to for sharing and documentation"><span>Export as PNG</span></button>
+                                <button data-action="export-nogrid-png-transparent" title="PNG with no background - drops onto slides and dark pages cleanly"><span>Export as PNG (Transparent)</span></button>
+                                <button data-action="export-nogrid-jpeg" title="Smaller file; slight compression softness on lines and text"><span>Export as JPEG</span></button>
+                                <button data-action="export-nogrid-pdf" title="Single-page PDF sized to the diagram"><span>Export as PDF</span></button>
+                                <button data-action="export-nogrid-svg" title="Scalable vector - crisp at any zoom; opens in browsers and Visio"><span>Export as SVG</span></button>
+                            </div>
+                        </div>
+                        <div class="menu-sub">
+                            <button class="has-sub" title="Same formats, with the background grid included"><span>Export With Grid</span><span class="sub-arrow">&rsaquo;</span></button>
+                            <div class="menu-flyout">
+                                <button data-action="export-grid-png" title="Lossless image - the go-to for sharing and documentation"><span>Export as PNG</span></button>
+                                <button data-action="export-grid-jpeg" title="Smaller file; slight compression softness on lines and text"><span>Export as JPEG</span></button>
+                                <button data-action="export-grid-pdf" title="Single-page PDF sized to the diagram"><span>Export as PDF</span></button>
+                                <button data-action="export-grid-svg" title="Scalable vector - crisp at any zoom; opens in browsers and Visio"><span>Export as SVG</span></button>
+                            </div>
+                        </div>
+                        <div class="menu-separator"></div>
+                        <button data-action="export-csv" title="One row per object: labels, device data fields, connection endpoints by name, then geometry/styling - re-imports cleanly, so a diagram can round-trip through a spreadsheet"><span>Export as CSV (data)</span></button>
+                        <button data-action="export-drawio" title="Opens directly in diagrams.net (which can re-export to Visio) - Device Details ride along, and re-importing it here round-trips everything"><span>Export as draw.io</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="export-scale" id="export-scale-btn" title="Raster resolution for PNG / JPEG / PDF exports - 2× and 4× render sharper images for print, video, and zooming"><span>Image Scale: 1&times;</span></button>
+                    </div>
+                </div>
+
+                <div class="menu-item" data-menu="edit">
+                    <span class="menu-label">Edit</span>
+                    <div class="menu-dropdown">
+                        <button id="btn-undo" data-action="undo"><span>Undo</span><span class="shortcut-key">Ctrl+Z</span></button>
+                        <button id="btn-redo" data-action="redo"><span>Redo</span><span class="shortcut-key">Ctrl+Y</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="copy"><span>Copy</span><span class="shortcut-key">Ctrl+C</span></button>
+                        <button data-action="paste" title="Paste copied objects - or an image straight from your clipboard (screenshots become canvas images)"><span>Paste</span><span class="shortcut-key">Ctrl+V</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="delete"><span>Delete</span><span class="shortcut-key">Del</span></button>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="layers">
+                    <span class="menu-label">Layers</span>
+                    <div class="menu-dropdown">
+                        <button data-action="arrange-front" title="Stack the selection above everything else in its tier"><span>Bring to Front</span></button>
+                        <button data-action="arrange-forward" title="Raise the selection one step in the stacking order"><span>Bring Forward</span></button>
+                        <button data-action="arrange-backward" title="Lower the selection one step in the stacking order"><span>Send Backward</span></button>
+                        <button data-action="arrange-back" title="Stack the selection beneath everything else in its tier"><span>Send to Back</span></button>
+                        <div class="menu-separator"></div>
+                        <div class="tier-header">Canvas Tiers</div>
+                        <div class="tier-row" data-tier="devices">
+                            <button class="tier-eye" title="Show/hide devices &amp; text">&#128065;</button>
+                            <button class="tier-lock" title="Lock devices &amp; text (clicks pass through)">&#128275;</button>
+                            <span class="tier-name">Devices &amp; Text</span>
+                        </div>
+                        <div class="tier-row" data-tier="connections">
+                            <button class="tier-eye" title="Show/hide connections">&#128065;</button>
+                            <button class="tier-lock" title="Lock connections (clicks pass through)">&#128275;</button>
+                            <span class="tier-name">Connections</span>
+                        </div>
+                        <div class="tier-row" data-tier="images">
+                            <button class="tier-eye" title="Show/hide images">&#128065;</button>
+                            <button class="tier-lock" title="Lock images (clicks pass through)">&#128275;</button>
+                            <span class="tier-name">Images</span>
+                        </div>
+                        <div class="tier-row" data-tier="zones">
+                            <button class="tier-eye" title="Show/hide zones">&#128065;</button>
+                            <button class="tier-lock" title="Lock zones (clicks pass through)">&#128275;</button>
+                            <span class="tier-name">Zones</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="align">
+                    <span class="menu-label">Align</span>
+                    <div class="menu-dropdown">
+                        <button data-action="align-left" title="Line up the selection's left edges"><span>Align Left</span></button>
+                        <button data-action="align-hcenter" title="Line up the selection's horizontal centers"><span>Align Center</span></button>
+                        <button data-action="align-right" title="Line up the selection's right edges"><span>Align Right</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="align-top" title="Line up the selection's top edges"><span>Align Top</span></button>
+                        <button data-action="align-vcenter" title="Line up the selection's vertical centers"><span>Align Middle</span></button>
+                        <button data-action="align-bottom" title="Line up the selection's bottom edges"><span>Align Bottom</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="distribute-h" title="Even out the horizontal gaps between three or more selected objects"><span>Distribute Horizontally</span></button>
+                        <button data-action="distribute-v" title="Even out the vertical gaps between three or more selected objects"><span>Distribute Vertically</span></button>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="bulk">
+                    <span class="menu-label">Bulk Actions</span>
+                    <div class="menu-dropdown">
+                        <button data-action="bulk-devices" title="Open Batch Edit for every device - color, size, font, icon, and more in one pass"><span>Select All Devices&hellip;</span></button>
+                        <button data-action="bulk-connections" title="Open Batch Edit for every connection - color, thickness, dash, routing, arrows"><span>Select All Connections&hellip;</span></button>
+                        <button data-action="bulk-zones" title="Open Batch Edit for every zone - fill, border, opacity, label styling"><span>Select All Zones&hellip;</span></button>
+                        <button data-action="bulk-textboxes" title="Open Batch Edit for every text box - font, size, color, alignment"><span>Select All Text Boxes&hellip;</span></button>
+                        <button data-action="bulk-images" title="Open Batch Edit for every image - width and stacking"><span>Select All Images&hellip;</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="bulk-everything" title="Open Batch Edit for the whole canvas at once"><span>Select Everything&hellip;</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="recolor-to-theme" title="Snap objects to the current theme's colors - pick which kinds (devices, zones, connections, text) in the popup (undoable)"><span>Recolor to Theme&hellip;</span></button>
+                        <button data-action="map-details-to-label" title="Stack chosen Device Details (Hostname, IP, …) into every device label as lines (undoable)"><span>Map Details to Label&hellip;</span></button>
+                        <button data-action="map-label-to-details" title="Pull an IPv4 address found in each device label into its IP-Address field (undoable) - handy for adapting an existing diagram for PingCanvas monitoring"><span>Map Label to Details&hellip;</span></button>
+                    </div>
+                </div>
+                <div class="menu-item" data-menu="help">
+                    <span class="menu-label">Help</span>
+                    <div class="menu-dropdown">
+                        <button data-action="help-quickstart" title="The five-minute tour: place, connect, zone, label, save"><span>Quick Start</span></button>
+                        <button data-action="help-shortcuts" title="The keyboard reference - also opens with ? on the canvas"><span>Keyboard Shortcuts</span></button>
+                        <button data-action="help-guide" title="The full manual, embedded so it travels with the app"><span>User Guide</span></button>
+                        <button data-action="help-inventory" title="Every accepted inventory format - vendor exports, lease files, text dumps - plus the plain CSV template and an example download"><span>Inventory Import Formats&hellip;</span></button>
+                        <div class="menu-separator"></div>
+                        <button data-action="download-offline" title="Download this app as a zip - unzip and open index.html to run it entirely from your own machine"><span>Download Offline Copy</span></button>
+                        <button data-action="help-about" title="Version, formats, credits, and license"><span>About CrossCanvas</span></button>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="menu-right">
+                <button id="btn-props-side" class="topbar-btn" title="Cycle the Properties panel: Right (opens on select), Right Locked (always open - selecting never shifts the canvas), or docked in the left sidebar">Properties: Right</button>
+                <select id="theme-select" title="Color theme - recolors the app chrome and seeds the color defaults for new objects"></select>
+                <button id="btn-dark-mode" class="topbar-btn" title="Toggle dark mode">&#9790; Dark</button>
+            </div>
+        </div>
+
+        <div id="toolbar">
+            <button id="btn-mobile-sidebar" class="tool-btn" title="Show / hide the stencil sidebar">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+            </button>
+            <button id="btn-select" class="tool-btn active" title="Select/Move">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M4 2l12 8-5 1.5L8.5 17z" fill="currentColor"/></svg>
+            </button>
+            <button id="btn-connect" class="tool-btn" title="Draw Connection">
+                <svg width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="3" fill="currentColor"/><circle cx="16" cy="16" r="3" fill="currentColor"/><line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" stroke-width="2"/></svg>
+            </button>
+            <button id="btn-add-text" class="tool-btn" title="Add Text Box">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M4 4h12M10 4v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <button id="btn-pan" class="tool-btn" title="Pan / Zoom - drag to pan; Ctrl+wheel (or wheel in pan mode) to zoom">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M10 2l3 3h-2v4h4V7l3 3-3 3v-2h-4v4h2l-3 3-3-3h2v-4H5v2l-3-3 3-3v2h4V5H7z" fill="currentColor"/></svg>
+            </button>
+            <button id="btn-zoom-out" class="tool-btn zoom-btn" title="Zoom Out (Ctrl+-)">&#8722;</button>
+            <span id="zoom-level" class="toolbar-zoom" title="Zoom - click to reset to 100%">100%</span>
+            <button id="btn-zoom-in" class="tool-btn zoom-btn" title="Zoom In (Ctrl++)">+</button>
+            <div class="toolbar-separator"></div>
+            <button id="tbar-undo" class="tool-btn" data-action="undo" title="Undo (Ctrl+Z)" style="opacity:0.4">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M5 10l4-4m-4 4l4 4m-4-4h9a4 4 0 010 8H10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button id="tbar-redo" class="tool-btn" data-action="redo" title="Redo (Ctrl+Y)" style="opacity:0.4">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M15 10l-4-4m4 4l-4 4m4-4H6a4 4 0 000 8h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button id="tbar-copy" class="tool-btn" data-action="copy" title="Copy (Ctrl+C)">
+                <svg width="20" height="20" viewBox="0 0 20 20"><rect x="7" y="7" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 13V3h9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button id="tbar-paste" class="tool-btn" data-action="paste" title="Paste (Ctrl+V)">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M6 5h8v12H6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 5V3.5h4V5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            </button>
+            <button id="tbar-delete" class="tool-btn" data-action="delete" title="Delete Selected (Del)">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M5 6h10l-1 11H6L5 6zm3-3h4m-7 3h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <div class="toolbar-separator"></div>
+            <button id="tbar-front" class="tool-btn" data-action="arrange-front" title="Bring to Front">
+                <svg width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="2" rx="1" fill="currentColor"/><path d="M10 7l4 5h-2.5v5h-3v-5H6z" fill="currentColor"/></svg>
+            </button>
+            <button id="tbar-forward" class="tool-btn" data-action="arrange-forward" title="Bring Forward">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M10 4l5 6h-3v6H8v-6H5z" fill="currentColor"/></svg>
+            </button>
+            <button id="tbar-backward" class="tool-btn" data-action="arrange-backward" title="Send Backward">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M10 16l5-6h-3V4H8v6H5z" fill="currentColor"/></svg>
+            </button>
+            <button id="tbar-back" class="tool-btn" data-action="arrange-back" title="Send to Back">
+                <svg width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="15" width="14" height="2" rx="1" fill="currentColor"/><path d="M10 13l4-5h-2.5V3h-3v5H6z" fill="currentColor"/></svg>
+            </button>
+            <div class="toolbar-separator"></div>
+            <button id="btn-grid" class="tool-btn active" title="Show/Hide Grid">
+                <svg width="20" height="20" viewBox="0 0 20 20"><path d="M3 3h14v14H3V3zm0 4.67h14M3 12.33h14M7.67 3v14M12.33 3v14" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+            </button>
+            <button id="btn-guides" class="tool-btn active" title="Alignment Guides - snap to nearby objects' edges/centers while dragging (hold Alt to bypass)">
+                <svg width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="6" width="6" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="4" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="1" y1="10" x2="19" y2="10" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/></svg>
+            </button>
+        </div>
+
+        <div id="sidebar">
+            <div class="sidebar-section" id="defaults-section">
+                <h3 class="section-header collapsed" data-target="defaults-content"><span class="collapse-arrow">&#9660;</span> Default Settings</h3>
+                <div id="defaults-content" class="section-content collapsed">
+                    <div class="default-size-control">
+                        <label>Font</label>
+                        <div class="font-row">
+                            <select id="default-font-family" class="font-family-select" title="Default font"></select>
+                            <select id="default-font-size" title="Default font size">
+                                <option value="9">9px</option>
+                                <option value="11">11px</option>
+                                <option value="13">13px</option>
+                                <option value="16" selected>16px</option>
+                                <option value="20">20px</option>
+                                <option value="24">24px</option>
+                                <option value="28">28px</option>
+                                <option value="32">32px</option>
+                                <option value="40">40px</option>
+                                <option value="48">48px</option>
+                                <option value="64">64px</option>
+                            </select>
+                            <input type="color" list="theme-swatches" id="default-font-color" value="#333333" title="Default font color">
+                        </div>
+                    </div>
+                    <div class="default-size-control">
+                        <label>Device Size: <span id="default-size-label">60px</span></label>
+                        <input type="range" id="default-device-size" min="40" max="200" step="10" value="60">
+                    </div>
+                    <div class="default-size-control">
+                        <label>Device Color</label>
+                        <div class="font-row">
+                            <input type="color" list="theme-swatches" id="default-device-tint" value="#4a90d9" title="Tint applied to newly placed devices">
+                            <button id="default-device-tint-reset" class="small-btn" title="Back to the theme's Device Color - untinted stencil colors when the theme sets none">Reset</button>
+                        </div>
+                    </div>
+                    <div class="default-size-control">
+                        <label>Device Background</label>
+                        <div class="font-row">
+                            <input type="color" list="theme-swatches" id="default-device-bg" value="#fffefe" title="Face color inside newly placed devices' frames">
+                            <button id="default-device-bg-reset" class="small-btn" title="New devices use the classic white face">Reset</button>
+                        </div>
+                    </div>
+                    <div class="default-size-control">
+                        <label>Zone Color</label>
+                        <div class="font-row">
+                            <input type="color" list="theme-swatches" id="default-zone-fill" value="#e8f4fd" title="Fill for newly created zones (border derives from it unless set below)">
+                            <button id="default-zone-fill-reset" class="small-btn" title="Back to the theme's Zone Color (Classic: light blue)">Reset</button>
+                        </div>
+                    </div>
+                    <div class="default-size-control">
+                        <label>Zone Border Color</label>
+                        <div class="font-row">
+                            <input type="color" list="theme-swatches" id="default-zone-border" value="#2d67b9" title="Border for newly created zones">
+                            <button id="default-zone-border-reset" class="small-btn" title="Back to the theme's zone border (or derive from a custom Zone Color)">Reset</button>
+                        </div>
+                    </div>
+                    <div class="default-size-control">
+                        <label>Attachment Points: <span id="default-ap-label">8</span></label>
+                        <input type="range" id="default-ap-count" min="4" max="16" step="4" value="8">
+                    </div>
+                    <div class="default-size-control">
+                        <label title="Extra horizontal room per device on inventory-CSV import - widen for long hostnames that would otherwise clip into each other">Import Spacing - Wider: <span id="import-hspace-label">100%</span></label>
+                        <input type="range" id="import-hspace" min="100" max="250" step="10" value="100">
+                    </div>
+                    <div class="default-size-control">
+                        <label title="Extra vertical room per device on inventory-CSV import - raise to fit multi-line labels (e.g. after Map Details to Label)">Import Spacing - Taller: <span id="import-vspace-label">100%</span></label>
+                        <input type="range" id="import-vspace" min="100" max="250" step="10" value="100">
+                    </div>
+                    <div class="default-size-control">
+                        <label title="Order devices within each zone on inventory-CSV import. MAC groups by vendor (OUI); Device type groups cameras/printers/PCs directly.">Import Sort</label>
+                        <select id="import-sort" style="width:100%">
+                            <option value="file" selected>File order</option>
+                            <option value="type">Device type</option>
+                            <option value="mac">MAC address</option>
+                            <option value="label">Label</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="shapes-section">
+                <h3 class="section-header" data-target="zones-content"><span class="collapse-arrow">&#9660;</span> Zones / Text</h3>
+                <div id="zones-content" class="section-content">
+                    <div id="shape-list">
+                        <div class="device-thumb shape-thumb" draggable="true" data-shape="rect" title="Rectangle Zone / Process (flowchart)">
+                            <svg width="40" height="40" viewBox="0 0 40 40"><rect x="4" y="4" width="32" height="32" fill="#e8f4fd" stroke="#2d67b9" stroke-width="2"/></svg>
+                        </div>
+                        <div class="device-thumb shape-thumb" draggable="true" data-shape="ellipse" title="Ellipse Zone / Start-End Terminator (flowchart)">
+                            <svg width="40" height="40" viewBox="0 0 40 40"><ellipse cx="20" cy="20" rx="16" ry="16" fill="#e8f4fd" stroke="#2d67b9" stroke-width="2"/></svg>
+                        </div>
+                        <div class="device-thumb shape-thumb" draggable="true" data-shape="diamond" title="Decision (flowchart)">
+                            <svg width="40" height="40" viewBox="0 0 40 40"><polygon points="20,4 36,20 20,36 4,20" fill="#e8f4fd" stroke="#2d67b9" stroke-width="2"/></svg>
+                        </div>
+                        <div class="device-thumb shape-thumb" draggable="true" data-shape="parallelogram" title="Data / Input-Output (flowchart)">
+                            <svg width="40" height="40" viewBox="0 0 40 40"><polygon points="11,11 36,11 29,29 4,29" fill="#e8f4fd" stroke="#2d67b9" stroke-width="2"/></svg>
+                        </div>
+                        <div class="device-thumb shape-thumb" draggable="true" data-shape="pill" title="Start / End (flowchart)">
+                            <svg width="40" height="40" viewBox="0 0 40 40"><rect x="4" y="12" width="32" height="16" rx="8" fill="#e8f4fd" stroke="#2d67b9" stroke-width="2"/></svg>
+                        </div>
+                        <div class="device-thumb shape-thumb" draggable="true" data-shape="document" title="Document (flowchart)">
+                            <svg width="40" height="40" viewBox="0 0 40 40"><path d="M 6 8 L 34 8 L 34 28 Q 27 24 20 28 Q 13 32 6 28 Z" fill="#e8f4fd" stroke="#2d67b9" stroke-width="2"/></svg>
+                        </div>
+                        <div class="device-thumb shape-thumb" draggable="true" data-shape="cylinder" title="Database (flowchart)">
+                            <svg width="40" height="40" viewBox="0 0 40 40"><path d="M 10 9 A 10 4 0 0 1 30 9 L 30 31 A 10 4 0 0 1 10 31 Z" fill="#e8f4fd" stroke="#2d67b9" stroke-width="2"/><path d="M 10 9 A 10 4 0 0 0 30 9" fill="none" stroke="#2d67b9" stroke-width="2"/></svg>
+                        </div>
+                        <div class="device-thumb shape-thumb" draggable="true" data-tool="textbox" title="Text Box">
+                            <svg width="40" height="40" viewBox="0 0 40 40"><rect x="4" y="4" width="32" height="32" fill="#e8f4fd" stroke="#2d67b9" stroke-width="1.5" stroke-dasharray="3 2"/><text x="20" y="20" text-anchor="middle" font-size="11" font-weight="bold" fill="#2d67b9">T</text><text x="20" y="32" text-anchor="middle" font-size="7" fill="#2d67b9">Text</text></svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3 class="section-header" data-target="devices-content"><span class="collapse-arrow">&#9660;</span> Devices</h3>
+                <div id="devices-content" class="section-content">
+                    <input type="text" id="device-search" placeholder="Search devices..." autocomplete="off">
+                    <div id="device-list"></div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3 class="section-header collapsed" data-target="device-library-content"><span class="collapse-arrow">&#9660;</span> Device Library</h3>
+                <div id="device-library-content" class="section-content collapsed">
+                    <button id="btn-import-device" class="sidebar-btn" title="Add a stencil from an image file - SVGs stay recolorable via Device Color">Import Device Image / SVG</button>
+                    <button id="btn-import-library" class="sidebar-btn" style="margin-top:4px">Import Device Library</button>
+                    <button id="btn-export-library" class="sidebar-btn" style="margin-top:4px">Export Device Library</button>
+                    <input type="file" id="file-import" accept="image/jpeg,image/png,image/svg+xml" style="display:none" multiple>
+                    <input type="file" id="file-import-library" accept=".js,.json" style="display:none">
+                </div>
+            </div>
+
+            <div id="properties-host">
+            <div id="textbox-panel" style="display:none">
+                <h3>Text Properties</h3>
+                <div class="panel-section">
+                    <label>Text</label>
+                    <div id="textbox-text" contenteditable="true" class="rich-label-editor" data-placeholder="Enter text..."></div>
+                </div>
+                <div class="panel-section">
+                    <label>Font</label>
+                    <div class="font-row">
+                        <select id="textbox-font-family" class="font-family-select" title="Font"></select>
+                        <select id="textbox-font-size">
+                            <option value="9">9px</option>
+                            <option value="11">11px</option>
+                            <option value="13">13px</option>
+                            <option value="16">16px</option>
+                            <option value="20" selected>20px</option>
+                            <option value="24">24px</option>
+                            <option value="28">28px</option>
+                            <option value="32">32px</option>
+                            <option value="40">40px</option>
+                            <option value="48">48px</option>
+                            <option value="64">64px</option>
+                        </select>
+                        <input type="color" list="theme-swatches" id="textbox-font-color" value="#333333">
+                            <button id="btn-reset-textbox-font" class="small-btn" title="Back to the theme default">Reset</button>
+                    </div>
+                    <div class="font-row">
+                        <div class="align-seg halign" id="textbox-halign-seg"></div>
+                    </div>
+                </div>
+                <div class="panel-hint">Hold <kbd>Alt</kbd> while moving to snap at half-grid (5px) for fine centering.</div>
+            </div>
+
+            <div id="connection-panel" style="display:none">
+                <h3>Connection Style</h3>
+                <div class="panel-section">
+                    <label>Thickness</label>
+                    <select id="conn-thickness">
+                        <option value="1">1px</option>
+                        <option value="2">2px</option>
+                        <option value="3">3px</option>
+                        <option value="4" selected>4px</option>
+                        <option value="6">6px</option>
+                    </select>
+                </div>
+                <div class="panel-section">
+                    <label>Color</label>
+                    <input type="color" list="theme-swatches" id="conn-color" value="#333333">
+                </div>
+                <div class="panel-section">
+                    <label>Line Style</label>
+                    <select id="conn-dash">
+                        <option value="solid">Solid</option>
+                        <option value="dash-sm">Dashed (small)</option>
+                        <option value="dash-md">Dashed (medium)</option>
+                        <option value="dash-lg">Dashed (large)</option>
+                        <option value="dot">Dotted</option>
+                        <option value="dash-dot">Dash-Dot</option>
+                    </select>
+                </div>
+                <div class="panel-section">
+                    <label>Routing</label>
+                    <select id="conn-routing">
+                        <option value="orthogonal">Orthogonal</option>
+                        <option value="rounded" selected>Rounded</option>
+                        <option value="straight">Straight</option>
+                    </select>
+                </div>
+                <div class="panel-section">
+                    <label>Start Arrow</label>
+                    <select id="conn-start-arrow">
+                        <option value="none" selected>None</option>
+                        <option value="arrow">Arrow</option>
+                        <option value="open-arrow">Open Arrow</option>
+                        <option value="diamond">Diamond</option>
+                        <option value="circle">Circle</option>
+                    </select>
+                </div>
+                <div class="panel-section">
+                    <label>End Arrow</label>
+                    <select id="conn-end-arrow">
+                        <option value="none" selected>None</option>
+                        <option value="arrow">Arrow</option>
+                        <option value="open-arrow">Open Arrow</option>
+                        <option value="diamond">Diamond</option>
+                        <option value="circle">Circle</option>
+                    </select>
+                </div>
+                <div class="panel-section">
+                    <label>Arrow Size</label>
+                    <select id="conn-arrow-scale">
+                        <option value="0.75">Small</option>
+                        <option value="1" selected>Normal</option>
+                        <option value="1.5">Large</option>
+                        <option value="2">Extra Large</option>
+                    </select>
+                    <div class="panel-hint">Arrows also scale with line thickness.</div>
+                </div>
+                <div class="panel-section">
+                    <label>Label</label>
+                    <div id="conn-label" contenteditable="true" class="rich-label-editor" data-placeholder="Connection label"></div>
+                </div>
+                <div class="panel-section">
+                    <label>Label Font</label>
+                    <div class="font-row">
+                        <select id="conn-font-family" class="font-family-select" title="Font"></select>
+                        <select id="conn-font-size">
+                            <option value="9">9px</option>
+                            <option value="11">11px</option>
+                            <option value="13">13px</option>
+                            <option value="16">16px</option>
+                            <option value="20" selected>20px</option>
+                            <option value="24">24px</option>
+                            <option value="28">28px</option>
+                            <option value="32">32px</option>
+                            <option value="40">40px</option>
+                            <option value="48">48px</option>
+                            <option value="64">64px</option>
+                        </select>
+                        <input type="color" list="theme-swatches" id="conn-font-color" value="#333333">
+                    </div>
+                    <div class="font-row">
+                        <div class="align-seg halign" id="conn-halign-seg"></div>
+                        <div class="align-seg valign" id="conn-valign-seg"></div>
+                    </div>
+                    <div class="font-row">
+                        <span class="mini-label">Position</span>
+                        <select id="conn-label-position">
+                            <option value="top" selected>Top</option>
+                            <option value="bottom">Bottom</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                            <option value="center">Center</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="panel-hint">Hold <kbd>Alt</kbd> while dragging bends or endpoints to snap at half-grid (5px).</div>
+            </div>
+
+            <div id="device-panel" style="display:none">
+                <h3 class="section-header panel-collapse-header" id="device-props-header"><span class="collapse-arrow">&#9660;</span> Device Properties</h3>
+                <div id="device-props-body">
+                <div class="panel-section">
+                    <label>Label</label>
+                    <div id="device-label" contenteditable="true" class="rich-label-editor" data-placeholder="Device name"></div>
+                </div>
+                <div class="panel-section">
+                    <label>Font</label>
+                    <div class="font-row">
+                        <select id="device-font-family" class="font-family-select" title="Font"></select>
+                        <select id="device-font-size">
+                            <option value="9">9px</option>
+                            <option value="11">11px</option>
+                            <option value="13">13px</option>
+                            <option value="16">16px</option>
+                            <option value="20" selected>20px</option>
+                            <option value="24">24px</option>
+                            <option value="28">28px</option>
+                            <option value="32">32px</option>
+                            <option value="40">40px</option>
+                            <option value="48">48px</option>
+                            <option value="64">64px</option>
+                        </select>
+                        <input type="color" list="theme-swatches" id="device-font-color" value="#333333">
+                            <button id="btn-reset-device-font" class="small-btn" title="Back to the theme default">Reset</button>
+                    </div>
+                    <div class="font-row">
+                        <div class="align-seg halign" id="device-halign-seg"></div>
+                        <div class="align-seg valign" id="device-valign-seg"></div>
+                    </div>
+                    <div class="font-row">
+                        <span class="mini-label">Position</span>
+                        <select id="device-label-position">
+                            <option value="bottom">Bottom</option>
+                            <option value="bottom-inside">Bottom (Inside)</option>
+                            <option value="top">Top</option>
+                            <option value="top-inside">Top (Inside)</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                            <option value="center">Center</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="panel-section" id="device-tint-section" style="display:none">
+                    <label>Device Color</label>
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <input type="color" list="theme-swatches" id="device-tint-color" value="#4a90d9">
+                        <button id="btn-reset-tint" class="small-btn" title="Back to the default Device Color - as if newly placed">Reset</button>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <label>Device Background</label>
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <input type="color" list="theme-swatches" id="device-iconbg-color" value="#fffefe" title="Face color inside the stencil frame">
+                        <button id="btn-reset-iconbg" class="small-btn" title="Back to the default background">Reset</button>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <label>Icon</label>
+                    <input type="text" id="device-template-filter" class="icon-filter" placeholder="Filter icons..." autocomplete="off" spellcheck="false">
+                    <select id="device-template-swap"></select>
+                </div>
+                <div class="panel-section">
+                    <label>Size W &times; H (px)</label>
+                    <div class="scale-controls">
+                        <button id="btn-scale-down" class="small-btn" title="Shrink (keeps aspect)">&#8722;</button>
+                        <input type="number" id="device-w-input" min="40" step="1" value="60" title="Width">
+                        <span class="mini-label">&times;</span>
+                        <input type="number" id="device-h-input" min="40" step="1" value="60" title="Height">
+                        <button id="btn-scale-up" class="small-btn" title="Grow (keeps aspect)">+</button>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <label>Attachment Points: <span id="device-ap-count">8</span></label>
+                    <input type="range" id="device-ap-slider" min="4" max="16" step="4" value="8">
+                </div>
+                <div class="panel-hint">Hold <kbd>Alt</kbd> while moving or resizing to snap at half-grid (5px) for fine centering.</div>
+                </div><!-- /device-props-body -->
+                <h3 class="section-header panel-collapse-header" id="device-details-header"><span class="collapse-arrow">&#9660;</span> Device Details</h3>
+                <div id="device-details-body" style="display:none">
+                    <div class="panel-section">
+                        <div id="device-fixed-fields"></div>
+                        <div id="device-fields-rows"></div>
+                        <button id="btn-add-device-field" class="small-btn">+ Add Field</button>
+                    </div>
+                    <div class="panel-hint">Data saved with the diagram and included in CSV export. Hostname falls back to the label's first line.</div>
+                </div>
+            </div>
+
+            <div id="zone-panel" style="display:none">
+                <h3>Zone Properties</h3>
+                <div class="panel-section">
+                    <label>Label</label>
+                    <div id="zone-label" contenteditable="true" class="rich-label-editor" data-placeholder="Zone name"></div>
+                </div>
+                <div class="panel-section">
+                    <label>Font</label>
+                    <div class="font-row">
+                        <select id="zone-font-family" class="font-family-select" title="Font"></select>
+                        <select id="zone-font-size">
+                            <option value="9">9px</option>
+                            <option value="11">11px</option>
+                            <option value="13">13px</option>
+                            <option value="16">16px</option>
+                            <option value="20" selected>20px</option>
+                            <option value="24">24px</option>
+                            <option value="28">28px</option>
+                            <option value="32">32px</option>
+                            <option value="40">40px</option>
+                            <option value="48">48px</option>
+                            <option value="64">64px</option>
+                        </select>
+                        <input type="color" list="theme-swatches" id="zone-font-color" value="#333333">
+                            <button id="btn-reset-zone-font" class="small-btn" title="Back to the theme default">Reset</button>
+                    </div>
+                    <div class="font-row">
+                        <div class="align-seg halign" id="zone-halign-seg"></div>
+                        <div class="align-seg valign" id="zone-valign-seg"></div>
+                    </div>
+                    <div class="font-row">
+                        <span class="mini-label">Position</span>
+                        <select id="zone-label-position">
+                            <option value="top">Top</option>
+                            <option value="top-inside">Top (Inside)</option>
+                            <option value="bottom">Bottom</option>
+                            <option value="bottom-inside">Bottom (Inside)</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                            <option value="center">Center</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <label>Shape</label>
+                    <select id="zone-shape-select">
+                        <option value="rect">Rectangle</option>
+                        <option value="ellipse">Ellipse</option>
+                        <option value="diamond">Diamond (Decision)</option>
+                        <option value="parallelogram">Parallelogram (Data)</option>
+                        <option value="pill">Pill (Start / End)</option>
+                        <option value="document">Document</option>
+                        <option value="cylinder">Cylinder (Database)</option>
+                    </select>
+                </div>
+                <div class="panel-section">
+                    <label>Fill Color</label>
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <input type="color" list="theme-swatches" id="zone-fill" value="#e8f4fd">
+                        <button id="btn-reset-zone-fill" class="small-btn" title="Back to the theme default">Reset</button>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <label>Border Color</label>
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <input type="color" list="theme-swatches" id="zone-border-color" value="#2d67b9">
+                        <button id="btn-reset-zone-border" class="small-btn" title="Back to the theme default">Reset</button>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <label>Opacity</label>
+                    <input type="range" id="zone-opacity" min="0.1" max="1" step="0.1" value="1">
+                </div>
+                <div class="panel-section">
+                    <label>Attachment Points: <span id="zone-ap-count">8</span></label>
+                    <input type="range" id="zone-ap-slider" min="4" max="16" step="4" value="8">
+                </div>
+                <div class="panel-hint">Hold <kbd>Alt</kbd> while moving or resizing to snap at half-grid (5px) for fine centering.</div>
+            </div>
+
+            <div id="image-panel" style="display:none">
+                <h3>Image Properties</h3>
+                <div class="panel-section">
+                    <label>Label</label>
+                    <div id="image-label" contenteditable="true" class="rich-label-editor" data-placeholder="Image label"></div>
+                </div>
+                <div class="panel-section">
+                    <label>Font</label>
+                    <div class="font-row">
+                        <select id="image-font-family" class="font-family-select" title="Font"></select>
+                        <select id="image-font-size">
+                            <option value="9">9px</option>
+                            <option value="11">11px</option>
+                            <option value="13">13px</option>
+                            <option value="16">16px</option>
+                            <option value="20" selected>20px</option>
+                            <option value="24">24px</option>
+                            <option value="28">28px</option>
+                            <option value="32">32px</option>
+                            <option value="40">40px</option>
+                            <option value="48">48px</option>
+                            <option value="64">64px</option>
+                        </select>
+                        <input type="color" list="theme-swatches" id="image-font-color" value="#333333">
+                    </div>
+                    <div class="font-row">
+                        <div class="align-seg halign" id="image-halign-seg"></div>
+                        <div class="align-seg valign" id="image-valign-seg"></div>
+                    </div>
+                    <div class="font-row">
+                        <span class="mini-label">Position</span>
+                        <select id="image-label-position">
+                            <option value="bottom">Bottom</option>
+                            <option value="bottom-inside">Bottom (Inside)</option>
+                            <option value="top">Top</option>
+                            <option value="top-inside">Top (Inside)</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                            <option value="center">Center</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <label>Attachment Points: <span id="image-ap-count">8</span></label>
+                    <input type="range" id="image-ap-slider" min="4" max="16" step="4" value="8">
+                </div>
+                <div class="panel-hint">Hold <kbd>Alt</kbd> while moving or resizing to snap at half-grid (5px) for fine centering.</div>
+            </div>
+
+            <div id="annotation-panel" style="display:none">
+                <h3>Annotation</h3>
+                <div class="panel-section">
+                    <label>Font</label>
+                    <div class="font-row">
+                        <select id="annotation-font-family" class="font-family-select" title="Font"></select>
+                        <select id="annotation-font-size">
+                            <option value="9">9px</option>
+                            <option value="11">11px</option>
+                            <option value="13">13px</option>
+                            <option value="16">16px</option>
+                            <option value="20" selected>20px</option>
+                            <option value="24">24px</option>
+                            <option value="28">28px</option>
+                            <option value="32">32px</option>
+                            <option value="40">40px</option>
+                            <option value="48">48px</option>
+                            <option value="64">64px</option>
+                        </select>
+                        <input type="color" list="theme-swatches" id="annotation-font-color" value="#333333">
+                    </div>
+                    <div class="font-row">
+                        <div class="align-seg halign" id="annotation-halign-seg"></div>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <button id="annotation-delete-btn" class="sidebar-btn">Delete Annotation</button>
+                </div>
+                <div class="panel-hint">Double-click the annotation on the canvas to edit its text.</div>
+            </div>
+
+            <div id="batch-panel" style="display:none">
+                <h3>Batch Edit</h3>
+                <div id="batch-summary" class="panel-hint"></div>
+
+                <div class="batch-group" id="batch-text-group">
+                    <h4>Text &amp; Labels</h4>
+                    <div class="panel-section">
+                        <label>Font</label>
+                        <select id="batch-font-family" class="font-family-select" data-keep="1"></select>
+                    </div>
+                    <div class="panel-section">
+                        <label>Font Size</label>
+                        <select id="batch-font-size">
+                            <option value="" selected>- keep -</option>
+                            <option value="9">9px</option>
+                            <option value="11">11px</option>
+                            <option value="13">13px</option>
+                            <option value="16">16px</option>
+                            <option value="20">20px</option>
+                            <option value="24">24px</option>
+                            <option value="28">28px</option>
+                            <option value="32">32px</option>
+                            <option value="40">40px</option>
+                            <option value="48">48px</option>
+                            <option value="64">64px</option>
+                        </select>
+                    </div>
+                    <div class="panel-section">
+                        <label>Font Color</label>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <input type="color" list="theme-swatches" id="batch-font-color" value="#333333">
+                            <button id="batch-reset-font-color" class="small-btn" title="Apply the theme default to the selection">Reset</button>
+                        </div>
+                    </div>
+                    <div class="panel-hint">Applies to every label, annotation and text box in scope.</div>
+                </div>
+
+                <div class="batch-group" id="batch-device-group">
+                    <h4>Devices (<span id="batch-device-count">0</span>)</h4>
+                    <div class="panel-section">
+                        <label>Size W &times; H (px)</label>
+                        <div class="font-row">
+                            <input type="number" id="batch-device-w" min="40" max="400" step="10" placeholder="- keep -" title="Width">
+                            <input type="number" id="batch-device-h" min="40" max="400" step="10" placeholder="- keep -" title="Height">
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <label>Device Color</label>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <input type="color" list="theme-swatches" id="batch-device-color" value="#4a90d9">
+                            <button id="batch-reset-device-color" class="small-btn" title="Apply the theme default to the selection">Reset</button>
+                        </div>
+                        <div class="panel-hint">Only SVG icons can be recolored.</div>
+                    </div>
+                    <div class="panel-section">
+                        <label>Device Background</label>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <input type="color" list="theme-swatches" id="batch-device-bg" value="#fffefe">
+                            <button id="batch-reset-device-bg" class="small-btn" title="Apply the theme default to the selection">Reset</button>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <label>Position</label>
+                        <select id="batch-device-labelpos" title="Move every selected device's label">
+                            <option value="" selected>- keep -</option>
+                            <option value="bottom">Bottom</option>
+                            <option value="bottom-inside">Bottom (Inside)</option>
+                            <option value="top">Top</option>
+                            <option value="top-inside">Top (Inside)</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                            <option value="center">Center</option>
+                        </select>
+                    </div>
+                    <div class="panel-section">
+                        <label>Icon</label>
+                        <input type="text" id="batch-device-filter" class="icon-filter" placeholder="Filter icons..." autocomplete="off" spellcheck="false">
+                        <select id="batch-device-swap"><option value="" selected>- keep -</option></select>
+                    </div>
+                </div>
+
+                <div class="batch-group" id="batch-conn-group">
+                    <h4>Connections (<span id="batch-conn-count">0</span>)</h4>
+                    <div class="panel-section">
+                        <label>Thickness</label>
+                        <select id="batch-conn-thickness">
+                            <option value="" selected>- keep -</option>
+                            <option value="1">1px</option>
+                            <option value="2">2px</option>
+                            <option value="3">3px</option>
+                            <option value="4">4px</option>
+                            <option value="6">6px</option>
+                        </select>
+                    </div>
+                    <div class="panel-section">
+                        <label>Color</label>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <input type="color" list="theme-swatches" id="batch-conn-color" value="#333333">
+                            <button id="batch-reset-conn-color" class="small-btn" title="Apply the theme default to the selection">Reset</button>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <label>Line Style</label>
+                        <select id="batch-conn-dash">
+                            <option value="" selected>- keep -</option>
+                            <option value="solid">Solid</option>
+                            <option value="dash-sm">Dashed (small)</option>
+                            <option value="dash-md">Dashed (medium)</option>
+                            <option value="dash-lg">Dashed (large)</option>
+                            <option value="dot">Dotted</option>
+                            <option value="dash-dot">Dash-Dot</option>
+                        </select>
+                    </div>
+                    <div class="panel-section">
+                        <label>Routing</label>
+                        <select id="batch-conn-routing">
+                            <option value="" selected>- keep -</option>
+                            <option value="orthogonal">Orthogonal</option>
+                            <option value="rounded">Rounded</option>
+                            <option value="straight">Straight</option>
+                        </select>
+                    </div>
+                    <div class="panel-section">
+                        <label>Arrow Size</label>
+                        <select id="batch-conn-arrow-scale">
+                            <option value="" selected>- keep -</option>
+                            <option value="0.75">Small</option>
+                            <option value="1">Normal</option>
+                            <option value="1.5">Large</option>
+                            <option value="2">Extra Large</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="batch-group" id="batch-zone-group">
+                    <h4>Zones (<span id="batch-zone-count">0</span>)</h4>
+                    <div class="panel-section">
+                        <label>Fill Color</label>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <input type="color" list="theme-swatches" id="batch-zone-fill" value="#e8f4fd">
+                            <button id="batch-reset-zone-fill" class="small-btn" title="Apply the theme default to the selection">Reset</button>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <label>Border Color</label>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <input type="color" list="theme-swatches" id="batch-zone-border" value="#2d67b9">
+                            <button id="batch-reset-zone-border" class="small-btn" title="Apply the theme default to the selection">Reset</button>
+                        </div>
+                    </div>
+                    <div class="panel-section">
+                        <label>Position</label>
+                        <select id="batch-zone-labelpos" title="Move every selected zone's label">
+                            <option value="" selected>- keep -</option>
+                            <option value="top">Top</option>
+                            <option value="top-inside">Top (Inside)</option>
+                            <option value="bottom">Bottom</option>
+                            <option value="bottom-inside">Bottom (Inside)</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                        </select>
+                    </div>
+                    <div class="panel-section">
+                        <label>Opacity</label>
+                        <input type="number" id="batch-zone-opacity" min="0" max="1" step="0.1" placeholder="- keep -">
+                    </div>
+                </div>
+
+                <div class="batch-group" id="batch-textbox-group">
+                    <h4>Text Boxes (<span id="batch-textbox-count">0</span>)</h4>
+                    <div class="panel-section">
+                        <label>Alignment</label>
+                        <select id="batch-textbox-align">
+                            <option value="" selected>- keep -</option>
+                            <option value="left">Left</option>
+                            <option value="center">Center</option>
+                            <option value="right">Right</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="batch-group" id="batch-image-group">
+                    <h4>Images (<span id="batch-image-count">0</span>)</h4>
+                    <div class="panel-section">
+                        <label>Width (px)</label>
+                        <input type="number" id="batch-image-width" min="40" max="800" step="10" placeholder="- keep -">
+                        <div class="panel-hint">Height scales to keep each image's aspect ratio.</div>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /properties-host -->
+        </div>
+
+        <div id="canvas-container">
+            <div id="canvas-find" style="display:none">
+                <input type="text" id="canvas-find-input" placeholder="Find on canvas..." autocomplete="off" spellcheck="false">
+                <span id="canvas-find-count"></span>
+            </div>
+            <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <pattern id="grid-pattern" width="20" height="20" patternUnits="userSpaceOnUse">
+                        <path id="grid-line" d="M 20 0 L 0 0 0 20" fill="none" stroke="#e0e0e0" stroke-width="0.5"/>
+                    </pattern>
+                </defs>
+                <rect id="canvas-bg" width="100%" height="100%" fill="white"/>
+                <rect id="grid-overlay" width="100%" height="100%" fill="url(#grid-pattern)"/>
+                <g id="zones-layer"></g>
+                <g id="images-layer"></g>
+                <g id="connections-layer"></g>
+                <g id="devices-layer"></g>
+                <g id="overlay-layer"></g>
+            </svg>
+        </div>
+
+        <aside id="right-pane"></aside>
+    </div>
+
+    <input type="file" id="file-load" accept=".xcanvas,.netdraw,.json,.gliffy,.vsdx,.vsdm,.drawio,.xml" style="display:none">
+    <input type="file" id="file-merge" accept=".xcanvas,.netdraw,.json,.gliffy,.vsdx,.vsdm,.drawio,.xml" style="display:none">
+    <input type="file" id="file-import-inventory" accept=".csv,.txt,.log,.leases" style="display:none" multiple>
+    <datalist id="theme-swatches"></datalist>
+    <input type="file" id="file-convert-diagrams" accept=".gliffy,.drawio,.xml" style="display:none" multiple>
+
+    <dialog id="app-dialog">
+        <h3 class="dialog-title"></h3>
+        <div class="dialog-body"></div>
+        <div class="dialog-buttons"></div>
+    </dialog>
+
+    <script src="devices.js" onerror="/* no bundled device library */"></script>
+    <script src="customdevices.js" onerror="/* no site/team device layer */"></script>
+    <script src="app.js"></script>
+</body>
+</html>

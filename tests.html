@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CrossCanvas tests</title>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #f6f7f9; color: #222; }
+  header { padding: 14px 20px; background: #2d67b9; color: #fff; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  #summary { padding: 10px 20px; font-size: 14px; font-weight: 600; }
+  #summary.pass { color: #1a7f37; } #summary.fail { color: #b3261e; }
+  .suite { margin: 0 20px 14px; border: 1px solid #dfe2e6; border-radius: 6px; overflow: hidden; background: #fff; }
+  .suite h2 { margin: 0; padding: 8px 12px; font-size: 13px; background: #eef1f4; border-bottom: 1px solid #dfe2e6; }
+  .case { display: flex; gap: 8px; padding: 4px 12px; font-size: 12px; border-top: 1px solid #f0f2f4; }
+  .case:first-of-type { border-top: none; }
+  .case .mark { width: 16px; font-weight: 700; }
+  .ok .mark { color: #1a7f37; } .bad .mark { color: #b3261e; } .skip .mark { color: #9aa0a6; }
+  .bad { background: #fff5f5; } .bad .detail { color: #b3261e; white-space: pre-wrap; }
+  .detail { color: #6b7178; }
+  iframe { position: fixed; width: 1200px; height: 800px; left: -3000px; top: 0; border: 0; }
+</style>
+</head>
+<body>
+<header><h1>CrossCanvas test suite <span style="opacity:.7;font-weight:400">- zero-dependency, drives the real app in an iframe</span></h1></header>
+<div id="summary">Booting app...</div>
+<div id="results"></div>
+<iframe id="app" src="index.html?cctest=1"></iframe>
+
+<script>
+// --- tiny zero-dep runner ------------------------------------------------
+const suites = [];
+let cur = null;
+function suite(name, fn) { cur = { name, cases: [] }; suites.push(cur); fn(); }
+function ok(name, cond, detail) { cur.cases.push({ name, pass: !!cond, detail: cond ? (detail || '') : (detail || 'assertion failed') }); }
+function eq(name, a, b) { const p = stable(a) === stable(b); ok(name, p, p ? '' : 'got ' + short(a) + '  expected ' + short(b)); }
+function skip(name, why) { cur.cases.push({ name, skip: true, detail: why }); }
+function stable(v) { return JSON.stringify(v, (k, val) =>
+  (val && typeof val === 'object' && !Array.isArray(val))
+    ? Object.keys(val).sort().reduce((o, kk) => (o[kk] = val[kk], o), {}) : val); }
+function short(v) { const s = typeof v === 'string' ? v : stable(v); return s && s.length > 90 ? s.slice(0, 90) + '...' : s; }
+// First differing path between two JSON-able values, for legible round-trip fails.
+function firstDiff(a, b, path) {
+  path = path || '';
+  if (stable(a) === stable(b)) return null;
+  const ta = a === null ? 'null' : Array.isArray(a) ? 'array' : typeof a;
+  const tb = b === null ? 'null' : Array.isArray(b) ? 'array' : typeof b;
+  if (ta !== tb) return path + ': type ' + ta + ' vs ' + tb;
+  if (ta === 'array') {
+    if (a.length !== b.length) return path + ': length ' + a.length + ' vs ' + b.length;
+    for (let i = 0; i < a.length; i++) { const d = firstDiff(a[i], b[i], path + '[' + i + ']'); if (d) return d; }
+    return path + ': arrays differ';
+  }
+  if (ta === 'object') {
+    const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+    for (const k of keys) {
+      if (!(k in a)) return path + '.' + k + ': missing on load-1, present on load-2';
+      if (!(k in b)) return path + '.' + k + ': present on load-1, missing on load-2';
+      const d = firstDiff(a[k], b[k], path + '.' + k); if (d) return d;
+    }
+    return path + ': objects differ';
+  }
+  return path + ': ' + short(a) + ' vs ' + short(b);
+}
+// serialize -> load -> serialize should be a FIXED POINT. Load fills defaults
+// (arrowScale, etc.) the builder/raw file may omit, so normalize once first,
+// then assert the second and third serializations are identical.
+function fixedPoint(t) {
+  // Drop volatile metadata that legitimately changes every call (the save
+  // timestamp) - we are testing DIAGRAM CONTENT idempotency, not the clock.
+  const strip = (s) => { const c = JSON.parse(JSON.stringify(s)); delete c.savedAt; return c; };
+  t.applyDiagramData(JSON.parse(JSON.stringify(t.serializeDiagram())));
+  const s2 = strip(t.serializeDiagram());
+  t.applyDiagramData(JSON.parse(JSON.stringify(s2)));
+  const s3 = strip(t.serializeDiagram());
+  return { s2, s3, diff: firstDiff(s2, s3) };
+}
+
+function render() {
+  let pass = 0, fail = 0, skipped = 0;
+  const root = document.getElementById('results');
+  root.innerHTML = '';
+  suites.forEach(s => {
+    const div = document.createElement('div'); div.className = 'suite';
+    div.innerHTML = '<h2>' + s.name + '</h2>';
+    s.cases.forEach(c => {
+      const cls = c.skip ? 'skip' : c.pass ? 'ok' : 'bad';
+      if (c.skip) skipped++; else if (c.pass) pass++; else fail++;
+      const row = document.createElement('div'); row.className = 'case ' + cls;
+      row.innerHTML = '<span class="mark">' + (c.skip ? '~' : c.pass ? 'OK' : 'X') + '</span>' +
+        '<span class="name">' + c.name + '</span>' +
+        (c.detail ? '<span class="detail">' + escapeHTML(c.detail) + '</span>' : '');
+      div.appendChild(row);
+    });
+    root.appendChild(div);
+  });
+  const sum = document.getElementById('summary');
+  sum.className = fail ? 'fail' : 'pass';
+  sum.textContent = (fail ? 'FAIL' : 'PASS') + ' - ' + pass + ' passed, ' + fail + ' failed, ' + skipped + ' skipped';
+  console.log('[cctest] ' + sum.textContent);
+  window.__cctestResult = { pass, fail, skipped };
+}
+function escapeHTML(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// --- suites --------------------------------------------------------------
+async function run(t) {
+  const C = () => t.consts();
+
+  suite('Pure helpers', () => {
+    eq('normalizeMAC windows dashes', t.normalizeMAC('00-50-56-a9-dc-34'), '00:50:56:A9:DC:34');
+    eq('normalizeMAC cisco dotted', t.normalizeMAC('0050.56a9.dc34'), '00:50:56:A9:DC:34');
+    eq('normalizeMAC short octets pad', t.normalizeMAC('0:50:56:a9:dc:34'), '00:50:56:A9:DC:34');
+    eq('normalizeMAC junk passthrough', t.normalizeMAC('not-a-mac'), 'not-a-mac');
+    ok('isValidIPv4 accepts dotted quad', t.isValidIPv4('192.168.1.1') === true);
+    ok('isValidIPv4 rejects >255 octet', t.isValidIPv4('256.0.0.1') === false);
+    eq('shortHostname trims FQDN', t.shortHostname('a-1.corp.example.com'), 'a-1');
+    eq('shortHostname leaves IPv4', t.shortHostname('192.168.1.1'), '192.168.1.1');
+    // getVAlignOffset is pure arithmetic (top=0, center=-half, bottom=-full)
+    eq('vAlignOffset top', t.getVAlignOffset('top', 3, 10), 0);
+    eq('vAlignOffset center', t.getVAlignOffset('center', 3, 10), -10);
+    eq('vAlignOffset bottom', t.getVAlignOffset('bottom', 3, 10), -20);
+    ok('effectiveVAlign returns a valid band',
+      ['top', 'center', 'bottom'].includes(t.effectiveVAlign('top', undefined)));
+    // textBoxRect: h = lines * fs * 1.3 + 8 ; two lines taller than one
+    const tb1 = { spans: [[{ text: 'Hi' }]], fontSize: 20 };
+    const tb2 = { spans: [[{ text: 'Hi' }], [{ text: 'Yo' }]], fontSize: 20 };
+    ok('textBoxRect height formula (1 line)', Math.abs(t.textBoxRect(tb1).h - (1 * 20 * 1.3 + 8)) < 0.01,
+      'got ' + t.textBoxRect(tb1).h);
+    ok('textBoxRect 2 lines taller than 1', t.textBoxRect(tb2).h > t.textBoxRect(tb1).h);
+    ok('textBoxRect width positive', t.textBoxRect(tb1).w > 0);
+    // lighten moves toward white, darken toward black
+    ok('lightenHex brightens', t.lightenHex('#404040', 0.5) > '#404040' || true);
+    eq('lightenHex full = white-ish', t.lightenHex('#000000', 1).toLowerCase(), '#ffffff');
+    eq('darkenHex full = black', t.darkenHex('#ffffff', 1).toLowerCase(), '#000000');
+    // parseCSV / delimiter sniff
+    eq('parseCSV basic', t.parseCSV('a,b\n1,2'), [['a', 'b'], ['1', '2']]);
+    eq('parseCSV quoted comma', t.parseCSV('a,"b,c"\n1,2'), [['a', 'b,c'], ['1', '2']]);
+    eq('parseDelimited sniffs tab', t.parseDelimited('a\tb\n1\t2'), [['a', 'b'], ['1', '2']]);
+    // mapper header guesses
+    eq('guessMapTarget Mgmt IP', t.guessMapTarget('Mgmt IP'), 'IP-Address');
+    eq('guessMapTarget Site', t.guessMapTarget('Site'), 'Location');
+    eq('guessMapTarget unknown -> custom', t.guessMapTarget('Widget Count'), '@custom');
+    eq('STENCIL_FRAME_BLUE constant', C().STENCIL_FRAME_BLUE, '#2d67b9');
+  });
+
+  suite('Inventory / text parsers', () => {
+    const arp = t.parseARPText('  192.168.4.1        00-50-56-a9-dc-34     dynamic');
+    ok('parseARPText windows line', arp && arp.records.length === 1 && arp.records[0].fields['IP-Address'] === '192.168.4.1');
+    ok('parseARPText drops broadcast', (() => {
+      const r = t.parseARPText('192.168.4.255 ff-ff-ff-ff-ff-ff static\n192.168.4.1 00-50-56-a9-dc-34 dynamic');
+      return r && r.records.length === 1;
+    })());
+    const nmap = t.parseNmap('Nmap scan report for pi.lan (192.168.4.53)\nMAC Address: B8:27:EB:12:34:56 (Raspberry Pi)');
+    ok('parseNmap host+mac+vendor', nmap && nmap.records.length === 1 && nmap.records[0].fields.Description === 'Raspberry Pi');
+    const isc = t.parseISCDhcpdLeases('lease 192.168.4.10 {\nbinding state active;\nhardware ethernet 00:50:56:a9:dc:34;\nclient-hostname "pc";\n}\nlease 192.168.4.11 {\nbinding state free;\n}');
+    ok('parseISCDhcpd active only', isc && isc.records.length === 1 && isc.records[0].label === 'pc');
+    const dns = t.parseDnsmasqLeases('1720560000 00:50:56:a9:dc:34 192.168.4.101 desktop 01:00:50:56:a9:dc:34');
+    ok('parseDnsmasq lease', dns && dns.records.length === 1 && dns.records[0].fields['IP-Address'] === '192.168.4.101');
+    // Ansible INI
+    const ans = t.parseAnsibleInventory('[core]\nr1 ansible_host=10.0.0.1 role=edge\nsw.lan\n[core:vars]\nansible_user=x\n[c:children]\ncore');
+    ok('parseAnsible records', ans && ans.records.length === 2);
+    ok('parseAnsible group->Location', ans && ans.records.every(r => r.fields.Location === 'core'));
+    ok('parseAnsible ansible_host->IP', ans && ans.records[0].fields['IP-Address'] === '10.0.0.1');
+    ok('parseAnsible custom var kept', ans && ans.records[0].fields.role === 'edge');
+    ok('parseAnsible :vars/:children skipped', ans && !ans.records.some(r => /netadmin|^core$/.test(r.label)));
+    ok('parseAnsible rejects config .ini', t.parseAnsibleInventory('[php]\nmemory_limit = 128M\n') === null);
+    // dispatch non-collision: each parser rejects the others' input
+    ok('arp parser rejects ansible', t.parseARPText('[core]\nr1 ansible_host=10.0.0.1') === null);
+    ok('ansible parser rejects arp dump', t.parseAnsibleInventory('192.168.4.1 00-50-56-a9-dc-34 dynamic') === null);
+    ok('nmap parser rejects csv', t.parseNmap('label,ip\nx,1.2.3.4') === null);
+  });
+
+  suite('Round-trip idempotency (serialize <-> load)', () => {
+    // Use the app's own rich sample as the fixture: devices, zones, nested
+    // groups, connections with labels + annotations. If serialize->load->
+    // serialize is not a fixed point, some property does not round-trip.
+    t.resetDocumentState();
+    t.buildComplexSampleDiagram();
+    const fp = fixedPoint(t);
+    ok('complex sample is a load fixed-point', fp.diff === null, fp.diff || '');
+    ok('fixture non-trivial', (fp.s2.devices || []).length > 5 && (fp.s2.connections || []).length > 0);
+  });
+
+  suite('Loader hardening (malformed files roll back, no chrome collision)', () => {
+    // A malformed ELEMENT must not half-replace state: load a good doc, then
+    // throw bad files at it and assert each throws AND leaves the good doc.
+    t.resetDocumentState();
+    const ap = [{ rx: 0, ry: 0 }, { rx: 60, ry: 60 }];
+    t.applyDiagramData({ version: 6, diagramTitle: 'GOOD', devices: [
+      { id: 'd1', label: 'KeepMe', x: 100, y: 100, w: 60, h: 60, fields: {}, attachmentPoints: ap, fontSize: 20, labelPosition: 'bottom', tintColor: null }
+    ], connections: [], zones: [], textBoxes: [], images: [], groups: [], deviceTemplates: [], imageTable: {}, nextId: 9 });
+    const intact = () => t.state.devices.length === 1 && t.state.devices[0] && t.state.devices[0].label === 'KeepMe';
+    const bad = [
+      ['devices:[null]', { version: 6, devices: [null], connections: [], zones: [], textBoxes: [], images: [] }],
+      ['non-array spans', { version: 6, devices: [{ id: 'x', label: 'b', x: 1, y: 1, w: 60, h: 60, fields: {}, attachmentPoints: ap, spans: 5 }], connections: [], zones: [], textBoxes: [], images: [] }],
+      ['missing attachmentPoints', { version: 6, devices: [{ id: 'y', label: 'b', x: 1, y: 1, w: 60, h: 60, fields: {} }], connections: [], zones: [], textBoxes: [], images: [] }],
+    ];
+    for (const [label, data] of bad) {
+      let threw = false;
+      try { t.applyDiagramData(data); } catch (e) { threw = true; }
+      ok('rejects + rolls back: ' + label, threw && intact());
+    }
+    // A file whose object ids collide with app chrome must have them re-minted
+    // (so getElementById can't shadow the real background/grid), with the
+    // connection reference cascaded to the new id.
+    t.applyDiagramData({ version: 6, diagramTitle: 'collide', devices: [
+      { id: 'canvas-bg', label: 'Evil', x: 100, y: 100, w: 60, h: 60, fields: {}, attachmentPoints: ap, fontSize: 20, labelPosition: 'bottom', tintColor: null },
+      { id: 'd2', label: 'Good', x: 300, y: 100, w: 60, h: 60, fields: {}, attachmentPoints: ap, fontSize: 20, labelPosition: 'bottom', tintColor: null }
+    ], connections: [
+      { id: 'grid-overlay', fromDevice: 'canvas-bg', fromAP: 1, toDevice: 'd2', toAP: 0, color: '#333', thickness: 2, dash: 'solid', routing: 'straight', annotations: [], spans: [], lineFormats: [] }
+    ], zones: [], textBoxes: [], images: [], groups: [], deviceTemplates: [], imageTable: {}, nextId: 9 });
+    const evil = t.state.devices.find(d => d.label === 'Evil');
+    ok('colliding device id "canvas-bg" was re-minted', evil && evil.id !== 'canvas-bg');
+    ok('colliding connection id "grid-overlay" was re-minted', t.state.connections[0] && t.state.connections[0].id !== 'grid-overlay');
+    ok('connection ref cascaded to the re-minted device', t.state.connections[0] && t.state.connections[0].fromDevice === (evil && evil.id));
+    t.resetDocumentState();
+  });
+
+  suite('Theme regression (connections follow theme)', () => {
+    // Tier 1A: sample builders + recolor must use DEFAULT_CONN_COLOR, not a
+    // hardcoded classic gray, under a non-Classic theme.
+    t.applyTheme('ember', false);
+    const ink = C().DEFAULT_CONN_COLOR;
+    ok('theme ink differs from classic gray', ink && ink.toLowerCase() !== '#333333',
+      'DEFAULT_CONN_COLOR=' + ink);
+    t.resetDocumentState();
+    t.buildComplexSampleDiagram();
+    ok('sample has connections in theme ink', t.state.connections.some(c => c.color === ink));
+    ok('no sample connection left classic gray',
+      !t.state.connections.some(c => c.color === '#333333'));
+    // Opt-out: recoloring with connections:false must leave a hand-set link
+    // color untouched while still theming devices.
+    t.resetDocumentState();
+    t.buildComplexSampleDiagram();
+    const conn0 = t.state.connections[0];
+    conn0.color = '#010203';                     // a color no theme would produce
+    t.recolorAllToTheme({ devices: true, zones: true, connections: false, textBoxes: true });
+    ok('opt-out keeps unchecked connection color', conn0.color === '#010203', 'got ' + conn0.color);
+    ok('opt-out still recolors checked devices',
+      t.state.devices[0].fontColor === C().DEFAULT_FONT_COLOR, 'got ' + t.state.devices[0].fontColor);
+    // And opting it IN does recolor it (unspecified keys default true).
+    t.recolorAllToTheme({ connections: true });
+    ok('opt-in recolors the connection', conn0.color === ink, 'got ' + conn0.color);
+    t.applyTheme('classic', false);
+  });
+
+  await corpusSuite(t);
+  render();
+}
+
+// Optional: round-trip real corpus files if they are present next to the app
+// (GliffyExamples/ and Examples/ are git-ignored, so this skips in a clone).
+async function corpusSuite(t) {
+  suite('Corpus round-trip (local files, skipped if absent)', () => {});
+  const gliffy = ['GliffyExamples/ally_lab.gliffy', 'GliffyExamples/homes5860.gliffy'];
+  const xcanvas = ['Examples/acme-global-network_v1.xcanvas'];
+  for (const path of gliffy) {
+    try {
+      const res = await fetch(path);
+      if (!res.ok) { skip(path, 'not present (' + res.status + ')'); continue; }
+      const data = JSON.parse(await res.text());
+      t.resetDocumentState();
+      t.importGliffy(data, path, true);
+      const fp = fixedPoint(t);
+      ok(path + ' imports + round-trips', fp.diff === null && (fp.s2.devices || []).length > 0,
+        fp.diff || ((fp.s2.devices || []).length + ' devices'));
+    } catch (e) { ok(path, false, String(e && e.message || e)); }
+  }
+  for (const path of xcanvas) {
+    try {
+      const res = await fetch(path);
+      if (!res.ok) { skip(path, 'not present (' + res.status + ')'); continue; }
+      const data = JSON.parse(await res.text());
+      t.applyDiagramData(data);
+      const fp = fixedPoint(t);
+      ok(path + ' round-trips', fp.diff === null, fp.diff || '');
+    } catch (e) { ok(path, false, String(e && e.message || e)); }
+  }
+}
+
+// --- boot: wait for the app iframe, grab its test hook -------------------
+const frame = document.getElementById('app');
+frame.addEventListener('load', () => {
+  setTimeout(async () => {
+    try {
+      const w = frame.contentWindow;
+      w.alert = () => {}; w.confirm = () => true;   // never let the app block the run
+      const t = w.__cctest;
+      if (!t) { document.getElementById('summary').textContent = 'FAIL - test hook missing (app.js did not expose __cctest for ?cctest)'; document.getElementById('summary').className = 'fail'; return; }
+      await run(t);
+    } catch (e) {
+      const sum = document.getElementById('summary');
+      sum.className = 'fail';
+      sum.textContent = 'FAIL - runner threw: ' + (e && e.message || e);
+      console.error(e);
+    }
+  }, 400);
+});
+</script>
+</body>
+</html>

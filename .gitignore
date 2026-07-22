@@ -1,0 +1,43 @@
+# Unrelated example projects kept in the workspace for reference only
+Menu Example/
+Styling Example/
+
+# Local working assets, not part of the app
+Icons/
+
+# Sample/import test files (Visio, Gliffy etc.) kept locally, not part of the app
+*.vsdx
+*.vsdm
+GliffyExamples/
+VisioExamples/
+VisioExamples2/
+VisioExamples3/
+SVGExamples/
+draw.io PNGs/
+Examples/
+inventory-template.csv
+CSV Formats/
+HomelabImport/
+
+# Personal scratch notes, not part of the app
+cert-enrollment-notes.txt
+
+# Site/team stencil layer - environment-specific, not part of the app
+customdevices.js
+
+# Local dev config, not part of the app
+.claude/launch.json
+FurtherDrawIOExamples/
+YetMoreDrawIOExamples/
+FurtherStillDrawIO/
+
+# Brand assets / raw icon-set sources (Stage 2/3 material, not app files)
+RootSwitch Icon.png
+affinity-master.zip
+favicon-inspiration/
+
+# Local test hosting config - not part of the published app
+netlify.toml
+
+# Session-local tooling and scratch boards, never published
+.claude/
