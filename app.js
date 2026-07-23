@@ -12359,7 +12359,9 @@
             const fields = { 'IP-Address': cur.ip };
             if (cur.host) fields.Hostname = cur.host;
             if (cur.mac) fields['MAC Address'] = cur.mac;
-            if (cur.vendor) fields.Description = cur.vendor;
+            // nmap writes "(Unknown)" for an OUI it can't name - not a useful
+            // Description, and the OUI still feeds the stencil guess below.
+            if (cur.vendor && !/^unknown$/i.test(cur.vendor)) fields.Description = cur.vendor;
             records.push({ label: cur.host ? shortHostname(cur.host) : cur.ip,
                            stencilName: guessNmapStencil(cur.vendor, cur.mac), fields: fields, x: null, y: null });
             cur = null;
