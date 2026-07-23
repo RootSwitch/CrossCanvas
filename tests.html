@@ -151,6 +151,21 @@ async function run(t) {
     })());
     const nmap = t.parseNmap('Nmap scan report for pi.lan (192.168.4.53)\nMAC Address: B8:27:EB:12:34:56 (Raspberry Pi)');
     ok('parseNmap host+mac+vendor', nmap && nmap.records.length === 1 && nmap.records[0].fields.Description === 'Raspberry Pi');
+    // Stencil guessing from the OUI vendor: a hostname lies, the NIC prefix does not.
+    const vmScan = t.parseNmap([
+      'Nmap scan report for bowser (10.0.0.9)',      // Mario-villain-named Hyper-V guest
+      'MAC Address: 00:15:5D:01:0F:33 (Microsoft)',
+      'Nmap scan report for 10.0.0.10',               // QEMU/KVM by OUI, vendor unknown
+      'MAC Address: 52:54:00:AB:CD:EF (Unknown)',
+      'Nmap scan report for cam (10.0.0.11)',
+      'MAC Address: 00:40:8C:12:34:56 (Axis Communications AB)',
+      'Nmap scan report for sw (10.0.0.12)',          // Cisco = ambiguous, no guess
+      'MAC Address: 00:1B:0D:99:88:77 (Cisco Systems)'
+    ].join('\n'));
+    ok('parseNmap guesses VM from Hyper-V OUI despite hostname', vmScan.records[0].stencilName === 'vm');
+    ok('parseNmap guesses VM from KVM OUI with unknown vendor', vmScan.records[1].stencilName === 'vm');
+    ok('parseNmap guesses camera from single-purpose vendor', vmScan.records[2].stencilName === 'camera');
+    ok('parseNmap declines to guess an ambiguous vendor', vmScan.records[3].stencilName === '');
     const isc = t.parseISCDhcpdLeases('lease 192.168.4.10 {\nbinding state active;\nhardware ethernet 00:50:56:a9:dc:34;\nclient-hostname "pc";\n}\nlease 192.168.4.11 {\nbinding state free;\n}');
     ok('parseISCDhcpd active only', isc && isc.records.length === 1 && isc.records[0].label === 'pc');
     const dns = t.parseDnsmasqLeases('1720560000 00:50:56:a9:dc:34 192.168.4.101 desktop 01:00:50:56:a9:dc:34');

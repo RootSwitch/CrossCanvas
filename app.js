@@ -12158,6 +12158,35 @@
         return '';
     }
 
+    // Well-known hypervisor MAC OUIs. A hostname lies (a VM can be named after
+    // a Mario character); the NIC's OUI does not - a VMware/Hyper-V/KVM prefix
+    // IS a virtual machine. Immutable data (OUI assignments never change), so a
+    // small copy of this set also lives in canvas-wall-setup.sh's --scan
+    // builder; keep the two in sync if a hypervisor is ever added.
+    const VM_OUIS = new Set([
+        '000c29', '005056', '000569', '001c14',   // VMware
+        '00155d',                                  // Microsoft Hyper-V (dynamic MAC)
+        '080027',                                  // Oracle VirtualBox
+        '525400',                                  // QEMU / KVM / libvirt (Proxmox default)
+        '00163e',                                  // Xen / XenSource
+        '001c42'                                   // Parallels
+    ]);
+
+    // Guess a stencil from what an nmap scan actually knows: the MAC-vendor
+    // (OUI) line. Deliberately conservative - only device classes a vendor
+    // makes EXCLUSIVELY get a guess. A Cisco/Ubiquiti OUI (switch? AP? phone?
+    // camera?) stays blank rather than guess wrong; a generic icon beats a
+    // confidently-wrong one.
+    function guessNmapStencil(vendor, mac) {
+        const v = String(vendor || '').toLowerCase();
+        const oui = String(mac || '').toLowerCase().replace(/[^0-9a-f]/g, '').slice(0, 6);
+        if (VM_OUIS.has(oui) || /vmware|virtualbox|parallels|\bxen\b|qemu|\bkvm\b|proxmox/.test(v)) return 'vm';
+        if (/axis communication|hikvision|dahua|mobotix|hanwha|hangzhou/.test(v)) return 'camera';
+        if (/\bapc\b|american power|cyberpower|\beaton\b|tripp.?lite|schneider/.test(v)) return 'ups';
+        if (/\bzebra\b/.test(v)) return 'printer';
+        return '';
+    }
+
     // --- Vendor CSV profiles -------------------------------------------
     // Shared profile postProcess: group clients under the network device they
     // connect through, from a SINGLE export (no separate device file, no
@@ -12332,7 +12361,7 @@
             if (cur.mac) fields['MAC Address'] = cur.mac;
             if (cur.vendor) fields.Description = cur.vendor;
             records.push({ label: cur.host ? shortHostname(cur.host) : cur.ip,
-                           stencilName: '', fields: fields, x: null, y: null });
+                           stencilName: guessNmapStencil(cur.vendor, cur.mac), fields: fields, x: null, y: null });
             cur = null;
         };
         String(text).split(/\r?\n/).forEach(line => {
