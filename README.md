@@ -90,6 +90,11 @@ full change history, see `CHANGELOG.md`; for design rationale, `NOTES.md`.
 - **Raster exports scale** - Image Scale 1× / 2× / 4× for print- and
   video-sharp PNG/JPEG/PDF; **Ctrl+F** finds any device on a big board by
   label, hostname, or IP.
+- **Generating diagrams with an AI agent?**
+  [docs/agent-guide.md](docs/agent-guide.md) is a single self-contained file
+  to hand Claude Code, Cline, or a local model - the CSV and `.xcanvas`
+  formats, stencil names, and layout conventions, with no need to read the
+  app source.
 
 ## Quick start
 
