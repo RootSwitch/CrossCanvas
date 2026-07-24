@@ -541,7 +541,7 @@ same way (old diagrams render regardless: devices embed their images inline).
   as an `<object>` wrapper (label attr + one attribute per field = Edit
   Data); labels are HTML (`<br>`, `<b>/<i>/<font color>`) double-escaped
   into XML attributes.
-- **Agreed longer-term direction** (see memory `data-interop-roadmap`):
+- **Agreed longer-term direction**:
   native .vsdx export is feasible (CompressionStream exists for a no-deps
   ZIP writer) but large and last - the draw.io bridge covers Visio
   portability meanwhile; a future `connects-to` CSV column could pre-wire
@@ -569,16 +569,12 @@ committed `launch.json` stays on `http.server`; production is IIS/Netlify). If y
 ever see changes not appear, that's the cache - hard-reload or use the no-cache
 server.
 
-## Working conventions (with Claude / contributors)
-- **Commit only when explicitly asked.** Don't auto-commit; the user runs work
-  in the tree and commits at chosen points.
-- **Verify previewable changes in the browser** before reporting done (the
+## Working conventions (contributors)
+- **Verify previewable changes in the browser** before calling them done (the
   preview server caches `app.js` - restart it if changes don't appear).
 - Match the surrounding vanilla-JS style; no new tooling or dependencies.
 
 ## Portability
-The project is fully relocatable: move the whole folder (including `.git`).
-It's a local-only repo with no remote and no absolute paths in the app code.
-Note that Claude Code session history and file-based memory are keyed to the
-folder's *path*, so they don't follow a move - which is exactly why this file
-exists: durable context lives in the repo, not in a chat session.
+The project is fully relocatable: move the whole folder (including `.git`) -
+there are no absolute paths in the app code. Durable context lives in the
+repo, in this file, on purpose.

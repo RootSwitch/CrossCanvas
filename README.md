@@ -15,17 +15,6 @@
 
 **[Try the editor live in your browser](https://rootswitch.github.io/CrossCanvas/?sample=complex&fit=1)** - no install, no sign-up, nothing leaves your machine.
 
-CrossCanvas is a lightweight, locally hostable network diagram editor that
-supports a variety of diagram formats (`.vsdx`, `.gliffy`, `.drawio`) and can
-import a variety of common client & device inventory formats to make
-diagramming an existing environment easier. It is designed for simplicity and
-usability first, but also supports expandability for those who want their own
-custom stencils and images. It is security-focused with no external
-dependencies or network calls, leveraging the browser's localStorage and
-saving/loading directly to the local filesystem. Diagrams it creates can then
-be directly converted to basic NOC monitoring dashboards through its sister
-application, **PingCanvas**.
-
 For a step-by-step walkthrough, see **[USER_GUIDE.md](USER_GUIDE.md)**. For the
 full change history, see `CHANGELOG.md`; for design rationale, `NOTES.md`.
 
