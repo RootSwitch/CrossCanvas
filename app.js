@@ -4161,13 +4161,13 @@
     document.getElementById('diagram-title').addEventListener('input', (e) => {
         state.diagramTitle = e.target.value || 'network-diagram';
     });
-    document.getElementById('diagram-version').addEventListener('input', (e) => {
-        state.diagramVersion = Math.max(1, parseInt(e.target.value) || 1);
-    });
-
+    // The version is display-only (Gliffy-style "Name, v3"): it counts up on
+    // each save and rides inside the file - not in the filename, and not
+    // hand-editable. Opening a file (or picking an old "_v3"-suffixed name in
+    // the save dialog) still restores/parses it.
     function updateTitleVersionUI() {
         document.getElementById('diagram-title').value = state.diagramTitle;
-        document.getElementById('diagram-version').value = state.diagramVersion;
+        document.getElementById('diagram-version').textContent = ', v' + state.diagramVersion;
     }
 
     function setDirty(dirty) {
@@ -8638,15 +8638,12 @@
         // archival save (library icons embedded instead of referenced by name).
         const buildJson = () => JSON.stringify(serializeDiagram(embedImages), null, 2);
 
-        // A "board" (PingCanvas board, whiteboard, etc.) wants a STABLE filename -
-        // the kiosk + status feed reference it by name - so skip the auto-version
-        // suffix when the title is about a board: the standalone word or a known
-        // compound. A bare substring test disabled versioning for "Keyboard
-        // Matrix" / "Onboarding" / "Billboard" - 'board' the syllable, not the
-        // thing you pin to a wall.
-        const isBoard = /(?:^|[\s_-])(?:white|dash|noc|status|wall)?boards?(?:$|[\s_.-])/i.test(state.diagramTitle || '');
-        const suggestedName = sanitizedTitle() +
-            (isBoard ? '' : ('_v' + state.diagramVersion)) + '.xcanvas';
+        // The filename is just the title - the version lives INSIDE the file
+        // (diagramVersion) and in the header display, Gliffy-style. Suffixing
+        // "_v3" here made every save propose a brand-new filename, so a shared
+        // folder sprawled with near-duplicates instead of one canonical file
+        // per diagram that each save overwrites.
+        const suggestedName = sanitizedTitle() + '.xcanvas';
 
         let saved = false;
         if (window.showSaveFilePicker) {
