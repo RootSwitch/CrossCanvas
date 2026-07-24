@@ -79,7 +79,9 @@ a live wall). These device fields are contracts, not decoration:
 An `.xcanvas` file is plain JSON. The loader is deliberately forgiving:
 `spans`/`lineFormats` rich-text structures are derived from plain `label`
 strings, arrow fields default to `none`, ids are remapped on load (they only
-need to be **internally consistent**, any unique strings work). A minimal
+need to be **internally consistent**, any unique strings work), and
+`diagramVersion` may be omitted (defaults to 1 - it is the app's save
+counter, not the schema version; `version: 6` is the schema). A minimal
 valid file:
 
 ```json
