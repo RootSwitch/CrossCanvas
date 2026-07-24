@@ -11,6 +11,8 @@
 > [LaunchCanvas](https://github.com/RootSwitch/LaunchCanvas) is the suite's
 > front door - one login for every app, and the place to start.
 
+**Install the whole suite in one command:** the [canvas-suite](https://github.com/RootSwitch/canvas-suite) repo is the family's landing page, with one-shot install scripts for the full six-app stack or a Pi-class PingCanvas + AlertCanvas pair.
+
 **[Try the editor live in your browser](https://rootswitch.github.io/CrossCanvas/?sample=complex&fit=1)** - no install, no sign-up, nothing leaves your machine.
 
 CrossCanvas is a lightweight, locally hostable network diagram editor that
