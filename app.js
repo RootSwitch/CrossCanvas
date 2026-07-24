@@ -101,7 +101,9 @@
         dirty: false,
         inlineEditing: null,
         diagramTitle: 'network-diagram',
-        diagramVersion: 1,
+        // Saves so far: 0 = never saved, so the first save writes v1 and the
+        // header shows the version the file on disk actually carries.
+        diagramVersion: 0,
         zoom: 1,
         panning: null,
         showGrid: true,
@@ -4167,7 +4169,8 @@
     // the save dialog) still restores/parses it.
     function updateTitleVersionUI() {
         document.getElementById('diagram-title').value = state.diagramTitle;
-        document.getElementById('diagram-version').textContent = ', v' + state.diagramVersion;
+        // An unsaved document has no version yet - show the one it will get.
+        document.getElementById('diagram-version').textContent = ', v' + (state.diagramVersion || 1);
     }
 
     function setDirty(dirty) {
@@ -8394,7 +8397,7 @@
         conn(sw, 3, ws, 0);
 
         state.diagramTitle = 'network-diagram';
-        state.diagramVersion = 1;
+        state.diagramVersion = 0;   // never saved yet; the first save writes v1
         setDirty(false);
         undoStack.length = 0;
         redoStack.length = 0;
@@ -8583,7 +8586,7 @@
         });
 
         state.diagramTitle = 'acme-global-network';
-        state.diagramVersion = 1;
+        state.diagramVersion = 0;   // never saved yet; the first save writes v1
         setDirty(false);
         undoStack.length = 0;
         redoStack.length = 0;
@@ -8604,7 +8607,7 @@
         resetDocumentState();
         state.nextId = 1;
         state.diagramTitle = 'network-diagram';
-        state.diagramVersion = 1;
+        state.diagramVersion = 0;   // never saved yet; the first save writes v1
         setDirty(false);
         clearAutosave();
         undoStack.length = 0;
@@ -8621,11 +8624,14 @@
     function applyChosenFileName(fileName) {
         if (!fileName) return;
         let base = fileName.replace(/\.(xcanvas|netdraw|json)$/i, '');
+        // A trailing "_v3" from the era when the version rode in the filename is
+        // stripped from the TITLE, but no longer adopted as the version: the
+        // file's own diagramVersion is authoritative on open, and on save the
+        // counter is ours. Adopting it meant that picking an existing
+        // "core_v3.xcanvas" in the Save dialog silently rewound a v12 diagram to
+        // v3 and pinned it there for every later save.
         const m = base.match(/^(.*)_v(\d+)$/);
-        if (m) {
-            base = m[1];
-            state.diagramVersion = Math.max(1, parseInt(m[2], 10));
-        }
+        if (m) base = m[1];
         if (base) state.diagramTitle = base;
     }
 
@@ -8645,39 +8651,49 @@
         // per diagram that each save overwrites.
         const suggestedName = sanitizedTitle() + '.xcanvas';
 
-        let saved = false;
+        let handle = null;
         if (window.showSaveFilePicker) {
             try {
-                const handle = await window.showSaveFilePicker({
+                handle = await window.showSaveFilePicker({
                     suggestedName: suggestedName,
                     types: [{
                         description: 'CrossCanvas Diagram',
                         accept: { 'application/json': ['.xcanvas'] }
                     }]
                 });
-                // Sync the in-app title/version to the name the user picked, then
-                // write so the embedded title matches the file on disk.
-                applyChosenFileName(handle.name);
-                const writable = await handle.createWritable();
-                await writable.write(buildJson());
-                await writable.close();
-                saved = true;
             } catch (err) {
+                // Cancelled: nothing was written, so nothing changes - not even
+                // the version.
                 if (err.name === 'AbortError') return;
             }
         }
 
+        // Committed to writing from here. Sync the title to the name the user
+        // picked, then bump the version BEFORE serializing: the number names the
+        // file we are about to write. Post-incrementing left the header claiming
+        // a version no file had (save, header jumps to v2; reopen that file and
+        // it reads v1 again).
+        if (handle) applyChosenFileName(handle.name);
+        state.diagramVersion++;
+
+        let saved = false;
+        if (handle) {
+            try {
+                const writable = await handle.createWritable();
+                await writable.write(buildJson());
+                await writable.close();
+                saved = true;
+            } catch (err) { /* write failed - fall back to a download below */ }
+        }
         if (!saved) {
-            triggerDownload(new Blob([buildJson()], { type: 'application/json' }), suggestedName);
+            // Recomputed, not the pre-picker suggestion: the title may have just
+            // changed, and the download should carry the name we actually saved as.
+            triggerDownload(new Blob([buildJson()], { type: 'application/json' }), sanitizedTitle() + '.xcanvas');
         }
 
         setDirty(false);
         clearAutosave();
-        // Record the saved state (slim form regardless of embed choice),
-        // before the version auto-increments so the snapshot matches the file
         recordRecent();
-        // Auto-increment version after each save
-        state.diagramVersion++;
         updateTitleVersionUI();
     }
 
@@ -9302,7 +9318,7 @@
         const fileTitle = fileName ? fileName.replace(/\.gliffy$/i, '') : null;
         const title = (metaTitle && metaTitle !== 'untitled') ? metaTitle : (fileTitle || 'gliffy-import');
         state.diagramTitle = title;
-        state.diagramVersion = 1;
+        state.diagramVersion = 0;   // never saved yet; the first save writes v1
         // Waypoint routes that fit the native rails become real bent
         // connections (needs the new nodes in state so endpoints resolve)
         state.connections.forEach(convertWaypointsToBends);
@@ -10525,7 +10541,7 @@
         state.textBoxes = newTextBoxes;
         state.images = newImages;
         state.diagramTitle = (file.name || 'visio-import').replace(/\.(vsdx|vsdm)$/i, '');
-        state.diagramVersion = 1;
+        state.diagramVersion = 0;   // never saved yet; the first save writes v1
         // Routed paths that fit the native rails become real bent connections
         // (needs the new nodes in state so endpoints resolve)
         state.connections.forEach(convertWaypointsToBends);
@@ -11442,7 +11458,7 @@
         const fileTitle = fileName ? fileName.replace(/\.(drawio|xml)$/i, '') : null;
         const title = (pageName && !/^Page-?\d*$/i.test(pageName)) ? pageName : (fileTitle || 'drawio-import');
         state.diagramTitle = title;
-        state.diagramVersion = 1;
+        state.diagramVersion = 0;   // never saved yet; the first save writes v1
         state.connections.forEach(convertWaypointsToBends);
         setDirty(true);
         updateTitleVersionUI();
@@ -13441,7 +13457,7 @@
         state.devices = newDevices;
         state.zones = newZones;
         state.diagramTitle = (fileName || 'inventory').replace(/\.csv$/i, '');
-        state.diagramVersion = 1;
+        state.diagramVersion = 0;   // never saved yet; the first save writes v1
         setDirty(true);
         updateTitleVersionUI();
         resetTiers();
