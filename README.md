@@ -53,7 +53,7 @@ full change history, see `CHANGELOG.md`; for design rationale, `NOTES.md`.
   endpoints that stay glued to devices as you move them.
 - **Rich text** - multi-line labels with per-character bold, italic, and color;
   curated font families; full horizontal/vertical alignment.
-- **29 color themes + dark mode** - recolor the whole app chrome and the default
+- **30 color themes + dark mode** - recolor the whole app chrome and the default
   object palette in a click; dark mode is surface-aware so labels stay legible.
   Alongside the **Classic** default is a spread of themes including a material
   family inspired by the canvas name (Canvas, Blueprint, Ink, Gesso).
@@ -149,7 +149,7 @@ repo root, and any static host works:
 
 ## Why one file?
 
-`app.js` is ~14,000 lines in a single IIFE, and that's a design decision, not
+`app.js` is ~15,000 lines in a single IIFE, and that's a design decision, not
 an accident:
 
 - **Auditability without tooling.** You can verify everything this app does -

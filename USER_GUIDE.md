@@ -205,14 +205,14 @@ See the PingCanvas and SNMPCanvas guides for the poller and metric-feed setup.
   font, **Device Color**, **Device Background**, **Zone Color**, **Zone Border
   Color**, and default attachment-point count. Each has a **Reset** that
   restores the active theme's value.
-- **Themes** - the picker by the dark-mode toggle offers 29 looks, grouped
+- **Themes** - the picker by the dark-mode toggle offers 30 looks, grouped
   (Paper, Warm, Cool, Night, Screen). **Classic** - the untinted original - is
   the default; beside it sit a material family inspired by the canvas name -
   **Canvas** (raw-canvas ecru), Gesso (warm-white minimal), Blueprint (cyanotype
   drafting), Ink (india-ink dark) - plus warm (Garnet, Ember, Rose, Sakura,
   Retro), cool (Sage, Evergreen, Lagoon, Glacier, Slate, Storm, Arctic, Solar
   Light), night (Midnight, Crimson Navy, Synthwave, Nocturne, Tokyo Night, Solar
-  Dark) and terminal (Phosphor, Amber) palettes. A theme recolors the app
+  Dark) and Screen (Phosphor, Amber) palettes. A theme recolors the app
   chrome *and* seeds the default object colors - device tint, zone fill/border,
   and now the **label font color**. Existing objects are left untouched; an
   **imported inventory**, however, is built with the active theme (device

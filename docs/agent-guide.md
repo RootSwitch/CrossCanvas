@@ -51,7 +51,7 @@ Rules:
   locations and the diagram organizes itself.
 - **Any extra column** (`Firmware` above) becomes a custom field on the
   device - visible in the device panel, exported with the diagram.
-- The user imports the file via **File > Import** in the app; format
+- The user imports the file via **File > Import Inventory** in the app; format
   detection is automatic. Layout is deterministic: same CSV, same diagram.
 
 The app also auto-detects many vendor exports directly (Cisco ISE, Windows
@@ -167,8 +167,10 @@ interface names.
 **Zone** - a labeled container drawn behind devices. `shape`:
 `rectangle | ellipse | diamond | parallelogram | pill | document | cylinder`.
 `labelPosition` adds `top-inside | bottom-inside`. Nesting is purely spatial:
-a zone whose rectangle contains another becomes its parent (parents
-auto-render as a lighter tint, so nested zones stay readable). Give zones
+a zone whose rectangle contains another becomes its parent. (The app's
+CSV importer and Recolor action paint parents a lighter tint so nesting
+stays readable - hand-authored zone fills render exactly as written, so
+pick lighter fills for outer zones yourself.) Give zones
 30-40 px padding around their contents and never let sibling zones overlap.
 
 **Text box** - `{ "id", "x", "y", "text", "fontSize", "fontColor",
@@ -231,7 +233,7 @@ the CSV `stencil` column (case-insensitive, aliases tolerated).
 - **Telecom**: Cloud Phone, Satellite, Satellite Dish
 - **Places & People**: Factory, House, Map Pin, Office, User
 - **General**: Cog, Communications, Grid, Light Bulb, Statistics, XML
-- **Special**: Blank (invisible node - an anchor for connections)
+- **Special**: Blank (an empty framed box - the label-only generic node)
 
 Common mappings: L2/access switch -> Switch; L3/core -> Multilayer Switch;
 hypervisor host -> Server; guest VM -> VM; NAS/SAN -> NAS or Storage;
