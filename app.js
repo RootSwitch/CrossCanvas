@@ -8396,6 +8396,26 @@
         conn(sw, 4, web, 0);
         conn(sw, 3, ws, 0);
 
+        // Hidden inventory data. Device Details fields are never drawn on the
+        // canvas - they surface in the details panel, the inventory CSV export
+        // and Ctrl+F - so the sample keeps human-readable role labels while
+        // carrying the addresses a monitoring tool needs. That split is the
+        // point, and it is worth noticing twice over:
+        //   - it is how the suite joins up. This board says "Core Switch"; the
+        //     PingCanvas wall and SNMPCanvas match on 10.20.0.2 and call it
+        //     core-sw. Export inventory here, import it there, done.
+        //   - it sanitizes. A diagram of a sensitive estate can be screen-
+        //     shared with a vendor showing nothing but roles, while the real
+        //     names and addresses stay in fields nobody on the call sees.
+        [
+            [fw,     'edge-fw',  '10.20.0.1'],
+            [sw,     'core-sw',  '10.20.0.2'],
+            [router, 'core-rtr', '10.20.0.3'],
+            [web,    'web-01',   '10.20.10.11'],
+            [db,     'db-01',    '10.20.10.16'],
+            [ws,     'ws-01',    '10.20.20.51']
+            // 'Internet' is deliberately left blank - it is not a device you poll.
+        ].forEach(([d, host, ip]) => { d.fields = { Hostname: host, 'IP-Address': ip }; });
         state.diagramTitle = 'network-diagram';
         state.diagramVersion = 0;   // never saved yet; the first save writes v1
         setDirty(false);
@@ -8585,6 +8605,61 @@
             ]
         });
 
+        // Hidden inventory data. Device Details fields are never drawn on the
+        // canvas - they surface in the details panel, the inventory CSV export
+        // and Ctrl+F - so the sample keeps human-readable role labels while
+        // carrying the addresses a monitoring tool needs. That split is the
+        // point, and it is worth noticing twice over:
+        //   - it is how the suite joins up. This board says "Core Switch"; the
+        //     PingCanvas wall and SNMPCanvas match on 10.20.0.2 and call it
+        //     core-sw. Export inventory here, import it there, done.
+        //   - it sanitizes. A diagram of a sensitive estate can be screen-
+        //     shared with a vendor showing nothing but roles, while the real
+        //     names and addresses stay in fields nobody on the call sees.
+        // 10.20.0.x HQ core | .10.x HQ servers | .20.x HQ users
+        // 10.20.21.x Branch 1 retail | .22.x Branch 2 warehouse | .30.x cloud VPC
+        [
+            [edgefirewall,          'edge-fw',       '10.20.0.1'],
+            [coreswitch,            'core-sw',       '10.20.0.2'],
+            [idsips,                'ids-01',        '10.20.0.5'],
+            [wirelesscontroller,    'wlc-01',        '10.20.0.6'],
+            [accessswitch,          'acc-sw-01',     '10.20.0.10'],
+
+            [webserver,             'intranet-01',   '10.20.10.11'],
+            [erpserver,             'erp-01',        '10.20.10.12'],
+            [directoryserver,       'dc-01',         '10.20.10.13'],
+            [nacserver,             'nac-01',        '10.20.10.14'],
+            [monitoringserver,      'mon-01',        '10.20.10.15'],
+            [backupnas,             'nas-01',        '10.20.10.20'],
+            [virtualizationcluster, 'vhost-cluster', '10.20.10.30'],
+
+            [wifiap,                'ap-hq-01',      '10.20.20.10'],
+            [financews,             'fin-ws-01',     '10.20.20.51'],
+            [laptop,                'lt-042',        '10.20.20.52'],
+            [printer,               'prn-01',        '10.20.20.60'],
+            [voipphone,             'voip-118',      '10.20.20.70'],
+            [poecamera,             'cam-hq-01',     '10.20.20.80'],
+
+            [branch1router,         'br1-rtr',       '10.20.21.1'],
+            [switchDev,             'pos-sw',        '10.20.21.2'],
+            [posterminal,           'pos-term-01',   '10.20.21.50'],
+            [camera,                'cam-br1-01',    '10.20.21.80'],
+
+            [branch2router,         'br2-rtr',       '10.20.22.1'],
+            [switchDev2,            'br2-sw',        '10.20.22.2'],
+            [satmodem,              'sat-modem',     '10.20.22.3'],
+            [wifiap2,               'wh-ap',         '10.20.22.10'],
+            [conveyor,              'plc-conv-01',   '10.20.22.40'],
+            [labelprinter,          'label-printer', '10.20.22.60'],
+
+            [loadbalancer,          'lb-01',         '10.20.30.10'],
+            [appvm1,                'web-01',        '10.20.30.11'],
+            [appvm2,                'web-02',        '10.20.30.12'],
+            [objectstorage,         'obj-store',     '10.20.30.20'],
+            [mgmtjumpbox,           'jump-01',       '10.20.30.30']
+            // Internet, Remote Staff and Satellite are deliberately blank:
+            // a cloud, a roaming person and a bird are not things you poll.
+        ].forEach(([d, host, ip]) => { d.fields = { Hostname: host, 'IP-Address': ip }; });
         state.diagramTitle = 'acme-global-network';
         state.diagramVersion = 0;   // never saved yet; the first save writes v1
         setDirty(false);

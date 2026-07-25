@@ -46,6 +46,21 @@ everything below not listed above.
 
 ## Foundation
 
+- **The built-in samples now carry hidden addressing.** Every device in the
+  Simple and Complex samples gained `Hostname` and `IP-Address` Device Details
+  fields on one coherent scheme (10.20.0.x HQ core, .10.x servers, .20.x users,
+  .21.x/.22.x branches, .30.x cloud). **Nothing about either diagram changed** -
+  no label, colour, zone tint or coordinate - because Details fields are never
+  drawn on the canvas. What it buys: the samples now export a real inventory
+  CSV, Ctrl+F finds a device by address, and the Complex sample can be taken
+  straight into PingCanvas or SNMPCanvas the way the quickstart describes.
+  Internet, Remote Staff and Satellite are deliberately left blank - a cloud, a
+  roaming person and a bird are not things you poll.
+- The role-label-plus-hidden-field split is also a **sanitization** property
+  worth knowing about: a diagram of a sensitive estate can be screen-shared
+  showing nothing but roles ("Core Switch", "Branch 1 Router") while the real
+  names and addresses sit in fields nobody on the call sees.
+
 - **`tests.html` moved to `tools/tests.html`.** It sat directly beside
   `index.html` in a repo that tracks thirteen files, so someone arriving for a
   diagram editor had to work out which HTML file was the product. It was never
