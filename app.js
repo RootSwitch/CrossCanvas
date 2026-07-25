@@ -8528,6 +8528,11 @@
         const nacserver = dev('Fingerprint', 'NAC Server', 240, 855);
         const monitoringserver = dev('Statistics', 'Monitoring Server', 340, 855);
         const virtualizationcluster = dev('ServerCluster', 'Virtualization Cluster', 180, 970, 150, 75);
+        // Rack UPS: no network link drawn, which is how most people diagram one -
+        // it is on the power side of the picture. It still carries an address,
+        // because a managed UPS is one of the more useful things to monitor and
+        // the suite's demo leans on it (battery, runtime, on-mains/on-battery).
+        const rackups = dev('UPS', 'Rack UPS', 350, 970);
         const accessswitch = dev('Switch', 'Access Switch', 500, 692);
         const financews = dev('Client', 'Finance WS', 470, 770, 50);
         const printer = dev('Printer', 'Printer', 580, 770, 50);
@@ -8632,6 +8637,7 @@
             [monitoringserver,      'mon-01',        '10.20.10.15'],
             [backupnas,             'nas-01',        '10.20.10.20'],
             [virtualizationcluster, 'vhost-cluster', '10.20.10.30'],
+            [rackups,               'ups-01',        '10.20.10.44'],
 
             [wifiap,                'ap-hq-01',      '10.20.20.10'],
             [financews,             'fin-ws-01',     '10.20.20.51'],

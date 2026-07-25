@@ -46,6 +46,15 @@ everything below not listed above.
 
 ## Foundation
 
+- **The Complex sample gained a Rack UPS.** It is the one device the rest of the
+  suite's demo estate already assumed: `ups-01` appears in SNMPCanvas's device
+  list and is three rows of AlertCanvas's Watching view (battery, runtime,
+  on-mains), but the sample had no UPS, so the diagram and the wall showed boards
+  that differed by a device. Placed beside the virtualization cluster with no
+  network link drawn - which is how most people diagram one, it belongs to the
+  power side of the picture - but carrying an address, because a managed UPS is
+  among the more useful things to monitor.
+
 - **The built-in samples now carry hidden addressing.** Every device in the
   Simple and Complex samples gained `Hostname` and `IP-Address` Device Details
   fields on one coherent scheme (10.20.0.x HQ core, .10.x servers, .20.x users,
