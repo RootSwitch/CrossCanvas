@@ -24,7 +24,7 @@
 <header><h1>CrossCanvas test suite <span style="opacity:.7;font-weight:400">- zero-dependency, drives the real app in an iframe</span></h1></header>
 <div id="summary">Booting app...</div>
 <div id="results"></div>
-<iframe id="app" src="index.html?cctest=1"></iframe>
+<iframe id="app" src="../index.html?cctest=1"></iframe>
 
 <script>
 // --- tiny zero-dep runner ------------------------------------------------
@@ -262,12 +262,13 @@ async function run(t) {
   render();
 }
 
-// Optional: round-trip real corpus files if they are present next to the app
+// Optional: round-trip real corpus files if they are present beside the app
 // (GliffyExamples/ and Examples/ are git-ignored, so this skips in a clone).
+// Paths are relative to this file, which lives one level down in tools/.
 async function corpusSuite(t) {
   suite('Corpus round-trip (local files, skipped if absent)', () => {});
-  const gliffy = ['GliffyExamples/ally_lab.gliffy', 'GliffyExamples/homes5860.gliffy'];
-  const xcanvas = ['Examples/acme-global-network_v1.xcanvas'];
+  const gliffy = ['../GliffyExamples/ally_lab.gliffy', '../GliffyExamples/homes5860.gliffy'];
+  const xcanvas = ['../Examples/acme-global-network_v1.xcanvas'];
   for (const path of gliffy) {
     try {
       const res = await fetch(path);

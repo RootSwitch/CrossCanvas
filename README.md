@@ -180,8 +180,8 @@ useful**: if a Visio, Gliffy, draw.io, or inventory export doesn't come in
 cleanly, open an issue and attach it (sanitized as needed). Adding support for
 more formats is something I'm genuinely happy to do, and a real sample is what
 makes that possible. Small, self-contained fixes - a typo, a one-function bug
-fix - are welcome as pull requests. Before a PR, open **`tests.html`** in a
-browser (green board = passing) - it's a zero-dependency suite that drives the
+fix - are welcome as pull requests. Before a PR, open **`tools/tests.html`** in
+a browser (green board = passing) - it's a zero-dependency suite that drives the
 app in an iframe and checks the parsers, geometry helpers, and diagram
 round-trip; no build step or install needed.
 

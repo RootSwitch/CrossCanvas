@@ -45,6 +45,13 @@ post-review correctness/performance/housekeeping passes.
 everything below not listed above.
 
 ## Foundation
+
+- **`tests.html` moved to `tools/tests.html`.** It sat directly beside
+  `index.html` in a repo that tracks thirteen files, so someone arriving for a
+  diagram editor had to work out which HTML file was the product. It was never
+  served to users - it is absent from the IIS package and the PingCanvas web
+  build - so this only changes the repo's front door. The suite itself is
+  unchanged and still runs the same way, now from one directory down.
 - **Initial editor** - SVG canvas with grid, device/zone/connection management, drag-and-drop with grid snap, attachment points, orthogonal routing, multi-select/drag/copy-paste, resize handles, labels with font/color controls, connection labels, auto tool-switching, JSON save/load, JPEG export.
 - **Finer 10px snapping** - the snap step halved from 20px (matching the draw.io/Visio norm) so imported Gliffy/Visio positions barely move on first touch; the *visible* grid stays 20px, so objects snap to half-lines Visio-style without a busier canvas. Alt fine-snap and Shift-arrow nudge stay 5px. Alignment guides already carry the "line things up" job a coarse grid used to.
 - **Undo/redo** - state snapshots before each mutation (devices, connections, zones, nextId); pre-drag snapshots committed only on real change; 500ms debounce on text/color inputs; 50-level stack with toolbar buttons and keyboard shortcuts.
