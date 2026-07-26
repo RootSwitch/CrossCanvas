@@ -18,7 +18,7 @@
 For a step-by-step walkthrough, see **[USER_GUIDE.md](USER_GUIDE.md)**. For the
 full change history, see `CHANGELOG.md`; for design rationale, `NOTES.md`.
 
-![Four CrossCanvas themes, four diagrams: an enterprise network on Classic, the starter sample on Rose, a home lab on Synthwave, and an application architecture on Ember](docs/hero-quadrants.png)
+![Four CrossCanvas themes, four diagrams: an enterprise network on Classic, the starter sample on Garnet, a home lab on Synthwave, and an application architecture on Ember](docs/hero-quadrants.png)
 
 ---
 

@@ -1,0 +1,1487 @@
+{
+ "version": 6,
+ "appVersion": "4.0.0",
+ "diagramTitle": "home-lab",
+ "diagramVersion": 1,
+ "savedAt": "2026-07-11T00:00:00.000Z",
+ "nextId": 36,
+ "devices": [
+  {
+   "id": "d2",
+   "templateId": null,
+   "image": "@Globe",
+   "originalImage": "@Globe",
+   "x": 620,
+   "y": 60,
+   "w": 70,
+   "h": 70,
+   "label": "Internet",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Internet",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 35.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 70.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 70.0,
+     "ry": 35.0
+    },
+    {
+     "rx": 70.0,
+     "ry": 70.0
+    },
+    {
+     "rx": 35.0,
+     "ry": 70.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 70.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 35.0
+    }
+   ]
+  },
+  {
+   "id": "d3",
+   "templateId": null,
+   "image": "@Modem",
+   "originalImage": "@Modem",
+   "x": 625,
+   "y": 200,
+   "w": 60,
+   "h": 60,
+   "label": "Cable Modem",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Cable Modem",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d4",
+   "templateId": null,
+   "image": "@Firewall",
+   "originalImage": "@Firewall",
+   "x": 625,
+   "y": 320,
+   "w": 60,
+   "h": 60,
+   "label": "pfSense",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "pfSense",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d5",
+   "templateId": null,
+   "image": "@Switch",
+   "originalImage": "@Switch",
+   "x": 625,
+   "y": 440,
+   "w": 60,
+   "h": 60,
+   "label": "Core Switch",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Core Switch",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d7",
+   "templateId": null,
+   "image": "@Switch",
+   "originalImage": "@Switch",
+   "x": 110,
+   "y": 630,
+   "w": 60,
+   "h": 60,
+   "label": "Rack Switch",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Rack Switch",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d8",
+   "templateId": null,
+   "image": "@NAS",
+   "originalImage": "@NAS",
+   "x": 240,
+   "y": 630,
+   "w": 60,
+   "h": 60,
+   "label": "NAS",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "NAS",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d9",
+   "templateId": null,
+   "image": "@Server",
+   "originalImage": "@Server",
+   "x": 370,
+   "y": 630,
+   "w": 60,
+   "h": 60,
+   "label": "Proxmox",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Proxmox",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d10",
+   "templateId": null,
+   "image": "@ServerCluster",
+   "originalImage": "@ServerCluster",
+   "x": 470,
+   "y": 640,
+   "w": 110,
+   "h": 55,
+   "label": "Pi Cluster",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Pi Cluster",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 55.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 110.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 110.0,
+     "ry": 27.5
+    },
+    {
+     "rx": 110.0,
+     "ry": 55.0
+    },
+    {
+     "rx": 55.0,
+     "ry": 55.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 55.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 27.5
+    }
+   ]
+  },
+  {
+   "id": "d11",
+   "templateId": null,
+   "image": "@UPS",
+   "originalImage": "@UPS",
+   "x": 110,
+   "y": 750,
+   "w": 60,
+   "h": 60,
+   "label": "UPS",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "UPS",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d12",
+   "templateId": null,
+   "image": "@Patch Panel",
+   "originalImage": "@Patch Panel",
+   "x": 240,
+   "y": 750,
+   "w": 60,
+   "h": 60,
+   "label": "Patch Panel",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Patch Panel",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d14",
+   "templateId": null,
+   "image": "@Client",
+   "originalImage": "@Client",
+   "x": 730,
+   "y": 630,
+   "w": 60,
+   "h": 60,
+   "label": "Desktop",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Desktop",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d15",
+   "templateId": null,
+   "image": "@Printer",
+   "originalImage": "@Printer",
+   "x": 860,
+   "y": 630,
+   "w": 60,
+   "h": 60,
+   "label": "Printer",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Printer",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d16",
+   "templateId": null,
+   "image": "@Laptop",
+   "originalImage": "@Laptop",
+   "x": 795,
+   "y": 750,
+   "w": 60,
+   "h": 60,
+   "label": "Laptop",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Laptop",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d18",
+   "templateId": null,
+   "image": "@WifiAP",
+   "originalImage": "@WifiAP",
+   "x": 1060,
+   "y": 630,
+   "w": 60,
+   "h": 60,
+   "label": "WiFi AP",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "WiFi AP",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d19",
+   "templateId": null,
+   "image": "@Client",
+   "originalImage": "@Client",
+   "x": 1190,
+   "y": 630,
+   "w": 60,
+   "h": 60,
+   "label": "Media PC",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Media PC",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  },
+  {
+   "id": "d20",
+   "templateId": null,
+   "image": "@Mobile Phone",
+   "originalImage": "@Mobile Phone",
+   "x": 1120,
+   "y": 750,
+   "w": 60,
+   "h": 60,
+   "label": "Phone",
+   "labelPosition": "bottom",
+   "fontSize": 14,
+   "fontColor": "#333333",
+   "lineFormats": [
+    {
+     "bold": false,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Phone",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "tintColor": null,
+   "attachmentPoints": [
+    {
+     "rx": 0.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 0.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 30.0
+    },
+    {
+     "rx": 60.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 30.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 60.0
+    },
+    {
+     "rx": 0.0,
+     "ry": 30.0
+    }
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "d21",
+   "fromDevice": "d2",
+   "fromAP": 5,
+   "toDevice": "d3",
+   "toAP": 1,
+   "color": "#7b52d0",
+   "thickness": 3,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d22",
+   "fromDevice": "d3",
+   "fromAP": 5,
+   "toDevice": "d4",
+   "toAP": 1,
+   "color": "#7b52d0",
+   "thickness": 3,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d23",
+   "fromDevice": "d4",
+   "fromAP": 5,
+   "toDevice": "d5",
+   "toAP": 1,
+   "color": "#7b52d0",
+   "thickness": 3,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d24",
+   "fromDevice": "d5",
+   "fromAP": 7,
+   "toDevice": "d7",
+   "toAP": 1,
+   "color": "#7b52d0",
+   "thickness": 2,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d25",
+   "fromDevice": "d5",
+   "fromAP": 5,
+   "toDevice": "d14",
+   "toAP": 1,
+   "color": "#333333",
+   "thickness": 2,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d26",
+   "fromDevice": "d5",
+   "fromAP": 3,
+   "toDevice": "d18",
+   "toAP": 1,
+   "color": "#7b52d0",
+   "thickness": 2,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d27",
+   "fromDevice": "d7",
+   "fromAP": 3,
+   "toDevice": "d8",
+   "toAP": 7,
+   "color": "#333333",
+   "thickness": 2,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d28",
+   "fromDevice": "d7",
+   "fromAP": 5,
+   "toDevice": "d11",
+   "toAP": 1,
+   "color": "#333333",
+   "thickness": 2,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d29",
+   "fromDevice": "d8",
+   "fromAP": 3,
+   "toDevice": "d9",
+   "toAP": 7,
+   "color": "#333333",
+   "thickness": 2,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d30",
+   "fromDevice": "d9",
+   "fromAP": 3,
+   "toDevice": "d10",
+   "toAP": 0,
+   "color": "#333333",
+   "thickness": 2,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d31",
+   "fromDevice": "d7",
+   "fromAP": 5,
+   "toDevice": "d12",
+   "toAP": 1,
+   "color": "#8a8a8a",
+   "thickness": 2,
+   "dash": "dash-sm",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d32",
+   "fromDevice": "d14",
+   "fromAP": 3,
+   "toDevice": "d15",
+   "toAP": 7,
+   "color": "#333333",
+   "thickness": 2,
+   "dash": "solid",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d33",
+   "fromDevice": "d14",
+   "fromAP": 5,
+   "toDevice": "d16",
+   "toAP": 1,
+   "color": "#8a8a8a",
+   "thickness": 2,
+   "dash": "dash-sm",
+   "routing": "rounded",
+   "label": "Wi-Fi",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#8a8a8a",
+   "lineFormats": [],
+   "spans": [
+    [
+     {
+      "text": "Wi-Fi",
+      "bold": false,
+      "italic": false
+     }
+    ]
+   ],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d34",
+   "fromDevice": "d18",
+   "fromAP": 5,
+   "toDevice": "d20",
+   "toAP": 1,
+   "color": "#8a8a8a",
+   "thickness": 2,
+   "dash": "dash-sm",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  },
+  {
+   "id": "d35",
+   "fromDevice": "d18",
+   "fromAP": 3,
+   "toDevice": "d19",
+   "toAP": 7,
+   "color": "#8a8a8a",
+   "thickness": 2,
+   "dash": "dash-sm",
+   "routing": "rounded",
+   "label": "",
+   "labelPosition": "top",
+   "labelVAlign": "top",
+   "fontSize": 13,
+   "fontColor": "#333333",
+   "lineFormats": [],
+   "spans": [],
+   "startArrow": "none",
+   "endArrow": "none",
+   "annotations": []
+  }
+ ],
+ "zones": [
+  {
+   "id": "d6",
+   "shape": "rectangle",
+   "x": 60,
+   "y": 580,
+   "w": 560,
+   "h": 280,
+   "label": "The Rack",
+   "labelPosition": "top-inside",
+   "labelVAlign": "top",
+   "fontSize": 15,
+   "fontColor": "#2c5f8a",
+   "lineFormats": [
+    {
+     "bold": true,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "The Rack",
+      "bold": true,
+      "italic": false
+     }
+    ]
+   ],
+   "fill": "#e8f4fd",
+   "borderColor": "#2d67b9",
+   "opacity": 1,
+   "attachmentPoints": []
+  },
+  {
+   "id": "d13",
+   "shape": "rectangle",
+   "x": 690,
+   "y": 580,
+   "w": 280,
+   "h": 280,
+   "label": "Office",
+   "labelPosition": "top-inside",
+   "labelVAlign": "top",
+   "fontSize": 15,
+   "fontColor": "#2c5f8a",
+   "lineFormats": [
+    {
+     "bold": true,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Office",
+      "bold": true,
+      "italic": false
+     }
+    ]
+   ],
+   "fill": "#e8f4fd",
+   "borderColor": "#2d67b9",
+   "opacity": 1,
+   "attachmentPoints": []
+  },
+  {
+   "id": "d17",
+   "shape": "rectangle",
+   "x": 1020,
+   "y": 580,
+   "w": 300,
+   "h": 280,
+   "label": "Living Room",
+   "labelPosition": "top-inside",
+   "labelVAlign": "top",
+   "fontSize": 15,
+   "fontColor": "#2c5f8a",
+   "lineFormats": [
+    {
+     "bold": true,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Living Room",
+      "bold": true,
+      "italic": false
+     }
+    ]
+   ],
+   "fill": "#e8f4fd",
+   "borderColor": "#2d67b9",
+   "opacity": 1,
+   "attachmentPoints": []
+  }
+ ],
+ "textBoxes": [
+  {
+   "id": "d1",
+   "x": 80,
+   "y": 20,
+   "text": "Home Lab \u2014 10.0.0.0/24",
+   "fontSize": 22,
+   "fontColor": "#3a2758",
+   "textAlign": "left",
+   "lineFormats": [
+    {
+     "bold": true,
+     "italic": false
+    }
+   ],
+   "spans": [
+    [
+     {
+      "text": "Home Lab \u2014 10.0.0.0/24",
+      "bold": true,
+      "italic": false
+     }
+    ]
+   ]
+  }
+ ],
+ "images": [],
+ "groups": [],
+ "deviceTemplates": [],
+ "imageTable": {}
+}
