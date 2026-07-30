@@ -141,7 +141,7 @@ Diagrams may contain sensitive production detail, so the threat model matters:
   **files saved by v6 don't render icons in pre-v6 builds** (acceptable:
   local tool, update in place). Trade-off accepted: files are no longer
   fully self-contained by default - they assume the app ships its stencil
-  library. **File → Save with Embedded Images** is the escape hatch: it
+  library. **File → Save Self-Contained Copy** is the escape hatch: it
   passes `embedImages` to `serializeDiagram`, which skips the by-name
   mechanism so library icons ride in `imageTable` like everything else
   (self-contained and still deduplicated; loads identically).

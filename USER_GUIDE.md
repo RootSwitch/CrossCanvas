@@ -236,8 +236,16 @@ See the PingCanvas and SNMPCanvas guides for the poller and metric-feed setup.
 
 - **File → Save** writes a `.xcanvas` file (plain JSON). The diagram title drives
   the filename and the version number auto-increments.
-- **File → Save with Embedded Images** produces a self-contained file that opens
-  with full icons on any CrossCanvas install, regardless of its stencil library.
+- **File → Save Self-Contained Copy** embeds the stencil library instead of
+  referencing it by name, so the file opens with full icons on a CrossCanvas
+  install whose stencil library differs from yours - typically one without your
+  site's `customdevices.js` layer. It is larger for that reason.
+
+  Worth knowing what a *normal* save already includes, because the old name for
+  this option ("Save with Embedded Images") suggested otherwise: **pasted images,
+  tinted icons and any stencils you imported yourself are stored in every save.**
+  The only art a normal save leaves out is the stencil library, which it
+  references by name on the assumption that the opening install has the same one.
 - **File → Open / Import Diagram** loads `.xcanvas` (and legacy `.json`) files; **Open Recent**
   lists the last diagrams you saved or opened, with a **Clear Recent** entry.
 - **Autosave** keeps your work in the browser and offers to restore it on the

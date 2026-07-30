@@ -3358,8 +3358,9 @@
             '<ul>' +
             '<li><strong>File → Save</strong> writes a .xcanvas file (plain JSON); the title drives ' +
             'the filename and the version auto-increments.</li>' +
-            '<li><strong>Save with Embedded Images</strong> is self-contained - opens with full icons ' +
-            'on any install.</li>' +
+            '<li><strong>Save Self-Contained Copy</strong> embeds the stencil library instead of ' +
+            'referencing it by name, so the file opens with full icons on an install that lacks ' +
+            'your custom stencils. Pasted images and stencils you imported are already in every save.</li>' +
             '<li><strong>Open / Import Diagram</strong> loads .xcanvas (and legacy .json); <strong>Open Recent</strong> ' +
             'lists the last diagrams. Autosave offers to restore on the next launch.</li>' +
             '</ul>' +
@@ -11735,9 +11736,13 @@
         // - Everything else (personal imports, tinted icons, pasted images)
         //   is content-deduplicated into imageTable and referenced '#<key>'.
         // Neither '@' nor '#' can start a real data URI.
-        // embedImages (File → Save with Embedded Images): skip the by-name
+        // embedImages (File → Save Self-Contained Copy): skip the by-name
         // mechanism so the file is self-contained for archival/off-site use -
-        // library icons then ride in imageTable like everything else.
+        // library icons then ride in imageTable like everything else. The menu
+        // item was called "Save with Embedded Images", which read as though a
+        // normal save left pasted images OUT - it does not, and never did. The
+        // only art a normal save omits is the stencil library, so the label is
+        // now "Save Self-Contained Copy".
         const bundledRef = new Map();
         if (!embedImages) {
             state.deviceTemplates.forEach(t => {
