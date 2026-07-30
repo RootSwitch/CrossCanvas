@@ -11834,10 +11834,45 @@
         }
     }
 
-    // Font stack for canvas ctx.font strings; falls back to the historical
-    // generic sans-serif when the object has no explicit family.
+    // The page's own font stack, read from the document rather than restated.
+    //
+    // An on-canvas label with no explicit family sets NO font-family attribute,
+    // so the SVG <text> inherits style.css's body rule. Anything that has to name
+    // a family instead - ctx.font for the raster export, the root attribute on a
+    // standalone .svg - must name that same stack or the two drift.
+    //
+    // They did drift: this returned the generic 'sans-serif', which Windows
+    // resolves to Arial while the canvas showed Segoe UI. Measured at 16px,
+    // "FauxDevice" is 84.5px in the export against 78.7px on canvas - and since
+    // labels are centred, that lands as ~3px of shift per side, plainly visible
+    // where a label sits against a zone edge. It also skewed the export BOUNDS,
+    // because ctxSpansWidth measures with this same family.
+    let uiFontStackCache = null;
+    function uiFontStack() {
+        if (uiFontStackCache) return uiFontStackCache;
+        const stack = (getComputedStyle(document.body).fontFamily || '').trim();
+        // A stack ctx.font cannot parse is assigned as a NO-OP - it silently
+        // leaves the previous font in place and the export would be wrong with
+        // nothing said. Probe once against a sentinel rather than assume.
+        let usable = false;
+        if (stack) {
+            const probe = document.createElement('canvas').getContext('2d');
+            probe.font = '10px monospace';
+            probe.font = '10px ' + stack;
+            usable = probe.font !== '10px monospace';
+        }
+        if (!usable && stack) {
+            console.warn('CrossCanvas: page font stack is not usable in ctx.font, ' +
+                'exports fall back to generic sans-serif:', stack);
+        }
+        uiFontStackCache = usable ? stack : 'sans-serif';
+        return uiFontStackCache;
+    }
+
+    // Font stack for canvas ctx.font strings; matches the on-canvas rendering
+    // when the object has no explicit family of its own.
     function ctxFamilyOf(obj) {
-        return fontStackOf(obj) || 'sans-serif';
+        return fontStackOf(obj) || uiFontStack();
     }
 
     // Widest rendered line of a spans block at font size fs (canvas measurement).
@@ -13704,7 +13739,9 @@
             // boxes/crop bounds measured under this stack. Set it on the root as
             // an INHERITED presentation attribute - text with its own explicit
             // font-family attribute still overrides it, so custom fonts survive.
-            clone.setAttribute('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif");
+            // Read from the document rather than restating the stack: a literal
+            // here silently drifts the day style.css changes.
+            clone.setAttribute('font-family', uiFontStack());
             // Background + grid: size the 100% rects to the exported area
             const bg = clone.querySelector('#canvas-bg');
             if (bg) {
