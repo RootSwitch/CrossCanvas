@@ -3305,6 +3305,9 @@
             '<ul>' +
             '<li><strong>Draw</strong> by dragging from a device edge to another device; drop on ' +
             'empty canvas for a free-floating endpoint.</li>' +
+            '<li><strong>Hold Ctrl (Cmd) as you release</strong> to end a connection exactly where ' +
+            'the cursor is, attaching to nothing - the way to draw an unplugged cable onto a device ' +
+            'that sits inside a zone, where the drop would otherwise snap to the zone.</li>' +
             '<li><strong>Routing</strong> - Straight, Rounded, or Orthogonal per connection.</li>' +
             '<li><strong>Reshape</strong> - selected connections show bend handles (auto-routed) or ' +
             'waypoint handles (imported routes). A bend dropped on its natural line removes itself.</li>' +
@@ -5352,11 +5355,25 @@
 
             const apEl = e.target.closest('.attachment-point');
 
+            // Ctrl/Cmd held at the drop means "land here, attach to nothing" -
+            // the end stays a free point even directly over a node. Without it,
+            // an unplugged-cable stub cannot be drawn onto a device that sits
+            // inside a zone: the zone body is under the cursor, so the drop
+            // always snapped to the zone's nearest attachment point.
+            //
+            // Not Alt: Alt already means finer grid AND no alignment guides
+            // (snapStepFor / alignment guides), so someone holding it to place a
+            // free end precisely would silently lose the ability to attach at
+            // all. Ctrl/Cmd has no meaning at connect-drop, so it is additive.
+            const noSnap = e.ctrlKey || e.metaKey;
+
             // Resolve the "to" end: an attachment point under the cursor, else a
             // node body (snap to its nearest AP, so drops don't have to land on
             // the small dots), else a free-floating point in empty space.
             let toDevice = null, toAP = null, toPoint = null;
-            if (apEl) {
+            if (noSnap) {
+                toPoint = { x: snapToGrid(point.x, fineStep), y: snapToGrid(point.y, fineStep) };
+            } else if (apEl) {
                 toDevice = apEl.dataset.deviceId;
                 toAP = parseInt(apEl.dataset.apIndex);
             } else {
