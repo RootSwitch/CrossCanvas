@@ -4207,6 +4207,28 @@
                state.selectedTextBoxes.length > 0 || state.selectedImages.length > 0;
     }
 
+    // Fold EVERY single selection into its multi array, before a modifier-click
+    // rewrites the selection.
+    //
+    // Each object type used to promote only its OWN single and then clear the
+    // rest - and clearing is a side effect of selectDevice(null) and friends,
+    // which null selectedTextBox/selectedImage/selectedConnection on the way
+    // past. So a Ctrl/Shift chain that CROSSED types silently dropped the item
+    // it started from: click a pasted image, Ctrl-click a device, and the image
+    // left the selection with nothing said. Same for every other pairing, in
+    // both directions.
+    //
+    // Promoting all five is what "add to the selection" already means to the
+    // user; the multi-drag and batch panel below both handle mixed sets.
+    function promoteSinglesToMulti() {
+        const promote = (single, arr) => { if (single && !arr.includes(single)) arr.push(single); };
+        promote(state.selectedDevice, state.selectedDevices);
+        promote(state.selectedZone, state.selectedZones);
+        promote(state.selectedTextBox, state.selectedTextBoxes);
+        promote(state.selectedImage, state.selectedImages);
+        promote(state.selectedConnection, state.selectedConnections);
+    }
+
     // Track double-click manually since mousedown→selectDevice→renderAllDevices
     // destroys DOM elements, preventing the browser from firing native dblclick
     let lastMousedownInfo = { time: 0, x: 0, y: 0 };
@@ -4549,9 +4571,7 @@
                 if (device) {
                     preDragSnapshot = snapshotState();
                     if (e.ctrlKey || e.metaKey) {
-                        if (state.selectedDevice && !state.selectedDevices.includes(state.selectedDevice)) {
-                            state.selectedDevices.push(state.selectedDevice);
-                        }
+                        promoteSinglesToMulti();
                         selectConnection(null);
                         selectDevice(null);
                         selectZone(null);
@@ -4565,9 +4585,7 @@
                         renderAllZones();
                         refreshBatchPanel();
                     } else if (e.shiftKey) {
-                        if (state.selectedDevice && !state.selectedDevices.includes(state.selectedDevice)) {
-                            state.selectedDevices.push(state.selectedDevice);
-                        }
+                        promoteSinglesToMulti();
                         selectConnection(null);
                         selectDevice(null);
                         selectZone(null);
@@ -4593,9 +4611,7 @@
                 if (img) {
                     preDragSnapshot = snapshotState();
                     if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                        if (state.selectedImage && !state.selectedImages.includes(state.selectedImage)) {
-                            state.selectedImages.push(state.selectedImage);
-                        }
+                        promoteSinglesToMulti();
                         selectConnection(null); selectDevice(null); selectZone(null); selectTextBox(null); selectImage(null);
                         const idx = state.selectedImages.indexOf(img.id);
                         if (e.shiftKey && !(e.ctrlKey || e.metaKey)) {
@@ -4622,9 +4638,7 @@
                 if (tb) {
                     preDragSnapshot = snapshotState();
                     if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                        if (state.selectedTextBox && !state.selectedTextBoxes.includes(state.selectedTextBox)) {
-                            state.selectedTextBoxes.push(state.selectedTextBox);
-                        }
+                        promoteSinglesToMulti();
                         selectConnection(null); selectDevice(null); selectZone(null); selectTextBox(null); selectImage(null);
                         const idx = state.selectedTextBoxes.indexOf(tb.id);
                         if (e.shiftKey && !(e.ctrlKey || e.metaKey)) {
@@ -4653,9 +4667,7 @@
                 if (zone) {
                     preDragSnapshot = snapshotState();
                     if (e.ctrlKey || e.metaKey) {
-                        if (state.selectedZone && !state.selectedZones.includes(state.selectedZone)) {
-                            state.selectedZones.push(state.selectedZone);
-                        }
+                        promoteSinglesToMulti();
                         selectConnection(null);
                         selectDevice(null);
                         selectZone(null);
@@ -4669,9 +4681,7 @@
                         renderAllZones();
                         refreshBatchPanel();
                     } else if (e.shiftKey) {
-                        if (state.selectedZone && !state.selectedZones.includes(state.selectedZone)) {
-                            state.selectedZones.push(state.selectedZone);
-                        }
+                        promoteSinglesToMulti();
                         selectConnection(null);
                         selectDevice(null);
                         selectZone(null);
@@ -4697,9 +4707,7 @@
                 if (connEl) {
                     const cid = connEl.dataset.connId;
                     if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                        if (state.selectedConnection && !state.selectedConnections.includes(state.selectedConnection)) {
-                            state.selectedConnections.push(state.selectedConnection);
-                        }
+                        promoteSinglesToMulti();
                         selectConnection(null); selectDevice(null); selectZone(null); selectTextBox(null); selectImage(null);
                         const idx = state.selectedConnections.indexOf(cid);
                         if (e.shiftKey && !(e.ctrlKey || e.metaKey)) {
@@ -5439,11 +5447,7 @@
     // current multi-selection (Shift-click); otherwise it replaces it.
     function selectGroupMembers(group, additive) {
         if (additive) {
-            // Fold any singular selection into the multi arrays first
-            if (state.selectedDevice && !state.selectedDevices.includes(state.selectedDevice)) state.selectedDevices.push(state.selectedDevice);
-            if (state.selectedZone && !state.selectedZones.includes(state.selectedZone)) state.selectedZones.push(state.selectedZone);
-            if (state.selectedTextBox && !state.selectedTextBoxes.includes(state.selectedTextBox)) state.selectedTextBoxes.push(state.selectedTextBox);
-            if (state.selectedImage && !state.selectedImages.includes(state.selectedImage)) state.selectedImages.push(state.selectedImage);
+            promoteSinglesToMulti();   // incl. a singly-selected connection, which this missed
         } else {
             state.selectedDevices = [];
             state.selectedZones = [];
