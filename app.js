@@ -6214,6 +6214,80 @@
     // up front, Firefox as a row above its panel. Zero dependencies; the
     // set is the active theme's palette plus a derived light/dark pair of
     // the tint and the two staples.
+    // --- Recent colors -------------------------------------------------------
+    // The theme palette covers the colours the app suggests. This covers the
+    // ones the USER chose, which is the harder problem: a picker reproduces
+    // gamut EDGES by gesture - drag saturation hard right, grab the corner, and
+    // #ff0000 comes out every time - but an interior colour like a particular
+    // orange has nothing to snap to and cannot be hit twice by hand. Once a
+    // colour is in the datalist it is one click away in every colour control.
+    //
+    // Deliberately NOT persisted across documents. A colour worth keeping
+    // forever belongs in a custom theme, which is already the supported route
+    // and applies to everyone opening the app from that host.
+    const RECENT_COLORS_MAX = 12;
+    let recentColors = [];
+
+    const isHexColor = (v) => typeof v === 'string' && v.length <= 9 && /^#[0-9a-fA-F]{3,8}$/.test(v);
+
+    // Normalize so #ABC, #aabbcc and #AABBCC are one entry rather than three.
+    function canonHex(v) {
+        let h = String(v).slice(1);
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        return '#' + h.toLowerCase();
+    }
+
+    function noteRecentColor(v) {
+        if (!isHexColor(v)) return;
+        const c = canonHex(v);
+        const i = recentColors.indexOf(c);
+        if (i >= 0) recentColors.splice(i, 1);
+        recentColors.unshift(c);
+        if (recentColors.length > RECENT_COLORS_MAX) recentColors.length = RECENT_COLORS_MAX;
+        refreshThemeSwatches();
+    }
+
+    // Seed from the document itself, so OPENING a diagram immediately offers the
+    // colours already in it - the common case being "another connection the same
+    // orange as that one". Walks the object arrays rather than stringifying
+    // state: devices carry inline image data URIs and a stringify would copy
+    // megabytes to find a handful of hex strings. Shape-agnostic within those
+    // arrays, so a colour field added later is picked up with no change here.
+    function collectDocumentColors() {
+        const counts = new Map();
+        const scan = (obj) => {
+            if (!obj || typeof obj !== 'object') return;
+            for (const k in obj) {
+                if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+                const v = obj[k];
+                if (isHexColor(v)) {
+                    const c = canonHex(v);
+                    counts.set(c, (counts.get(c) || 0) + 1);
+                } else if (Array.isArray(v)) {
+                    v.forEach(scan);   // connection spans carry per-run colours
+                }
+            }
+        };
+        [state.devices, state.connections, state.zones, state.textBoxes, state.images]
+            .forEach(arr => (arr || []).forEach(scan));
+        // Most-used first: the diagram's dominant colours are the ones most
+        // likely to be wanted again.
+        return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+    }
+
+    function seedRecentColorsFromDocument() {
+        recentColors = collectDocumentColors().slice(0, RECENT_COLORS_MAX);
+        refreshThemeSwatches();
+    }
+
+    // One delegated listener rather than 22 bindings: catches every colour input
+    // that exists now or is added later. `change` not `input`, so dragging
+    // around a picker records only what was actually committed.
+    document.addEventListener('change', (e) => {
+        const t = e.target;
+        if (t && t.tagName === 'INPUT' && t.type === 'color') noteRecentColor(t.value);
+    });
+
     function refreshThemeSwatches() {
         const dl = document.getElementById('theme-swatches');
         if (!dl) return;
@@ -6239,7 +6313,14 @@
             '#ffffff', '#333333'
         ].filter(Boolean);
         dl.innerHTML = '';
-        [...new Set(set.map(c => String(c).toLowerCase()))].forEach(c => {
+        // Theme palette FIRST, then the user's recents: the picker renders these
+        // in order, so the colours the app suggests keep the leading positions
+        // and recents extend the grid rather than displacing anything.
+        const seen = new Set();
+        const norm = (c) => (isHexColor(c) ? canonHex(c) : String(c).toLowerCase());
+        [...set.map(norm), ...recentColors].forEach(c => {
+            if (seen.has(c)) return;
+            seen.add(c);
             const o = document.createElement('option');
             o.value = c;
             dl.appendChild(o);
@@ -8711,6 +8792,7 @@
         state.nextId = 1;
         state.diagramTitle = 'network-diagram';
         state.diagramVersion = 0;   // never saved yet; the first save writes v1
+        seedRecentColorsFromDocument();   // empty document, so: no recents
         setDirty(false);
         clearAutosave();
         undoStack.length = 0;
@@ -10704,6 +10786,9 @@
             try { restoreSnapshot(_rollback); } catch (_) { /* the snapshot was valid; best effort */ }
             throw err;
         }
+        // Only after the load is known good: a rolled-back file must not leave
+        // its colours behind in the picker.
+        seedRecentColorsFromDocument();
     }
 
     // The body of applyDiagramData, split out so the public entry can wrap it
