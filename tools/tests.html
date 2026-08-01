@@ -428,6 +428,51 @@ function routingSuite(t) {
     }
     ok('sweep: no AP change leaves a diagonal (' + swept + ' combinations)', broke === 0,
       broke ? broke + ' of ' + swept + ' produced a diagonal; e.g. ' + example : swept + ' clean');
+
+    // 4. The two properties orthogonality alone cannot pin. Deleting every bend
+    //    would pass the checks above; these are what make that a non-fix.
+    //
+    // 4a. A bend still APPLIES when the skeleton accommodates it - moving to an
+    //     adjacent AP with the same route shape must keep the user's shape, not
+    //     fall back to natural. Diagonal arrangement: AP 0 -> 6 routes VHV-ish
+    //     and AP 1 (top-right corner) keeps that skeleton.
+    t.applyDiagramData(twoBoxDoc(120, 400, 420, 120, 0, 6));
+    {
+      const conn = t.state.connections[0];
+      const p0 = routeOf(t, conn);
+      const o0 = [];
+      for (let i = 0; i < p0.length - 1; i++) o0.push(Math.abs(p0[i].x - p0[i + 1].x) <= Math.abs(p0[i].y - p0[i + 1].y));
+      bendOneSegment(t, conn, 1, 40);
+      const bent = routeOf(t, conn);
+      const bentVal = o0[1] ? bent[1].x : bent[1].y;
+      conn.fromAP = 1;
+      const p1 = routeOf(t, conn);
+      const same = p1.length === p0.length;
+      const still = same ? (o0[1] ? p1[1].x : p1[1].y) : null;
+      ok('same-skeleton AP change keeps the bend applied',
+        same && Math.abs(still - bentVal) < 0.75,
+        same ? 'bent value ' + bentVal + ', after AP change ' + still : 'skeleton changed (' + p0.length + ' -> ' + p1.length + ' pts), fixture needs new APs');
+    }
+
+    // 4b. A skipped bend is skipped, NOT deleted: restore the old geometry and
+    //     the bent shape comes back exactly. Uses a known skeleton-changing AP
+    //     move from the failing set above.
+    t.applyDiagramData(twoBoxDoc(120, 400, 120, 120, 0, 0));
+    {
+      const conn = t.state.connections[0];
+      bendOneSegment(t, conn, 1, 40);
+      const before = JSON.stringify(routeOf(t, conn));
+      const storedBefore = JSON.stringify(conn.bends);
+      conn.fromAP = 4;                          // skeleton changes; bend must skip
+      const away = orthoOffenders(routeOf(t, conn));
+      conn.fromAP = 0;                          // and coming back restores it
+      const after = JSON.stringify(routeOf(t, conn));
+      ok('skipped bend stays orthogonal while away', away.length === 0, away.join('; '));
+      ok('bend storage survives the round trip', JSON.stringify(conn.bends) === storedBefore,
+        'stored ' + storedBefore + ' now ' + JSON.stringify(conn.bends));
+      ok('restoring the AP restores the bent shape exactly', after === before,
+        after === before ? '' : 'before ' + before.slice(0, 80) + '... after ' + after.slice(0, 80) + '...');
+    }
   });
 }
 

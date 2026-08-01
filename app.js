@@ -1384,12 +1384,45 @@
     function applyManualBends(points, conn) {
         if (!conn.bends || points.length < 4) return points;
         const isVert = naturalSegmentOrientations(points);
+        // A bend is { segmentIndex: value } - an x for a vertical segment, a y
+        // for a horizontal one. The AXIS is not stored; it is re-derived from
+        // the natural route at apply time. When a reroute changes the skeleton
+        // (an endpoint moved, an AP changed, the AP count regenerated), the
+        // segment at that index can have a different orientation than the one
+        // the value was recorded under, and the value lands on the wrong axis.
+        //
+        // The written segment itself never shows the damage - writing one axis
+        // to both its endpoints keeps it aligned. Its NEIGHBOURS do: their far
+        // endpoints stay put, so a neighbour that runs along the written axis's
+        // perpendicular turns diagonal - and an orthogonal connection has no
+        // legitimate diagonal segment, ever (see the routing-invariant suite in
+        // tools/tests.html).
+        //
+        // So each bend applies only when both neighbours can absorb the write:
+        // for an x-write they must run horizontally (or be zero-length, which
+        // can stretch either way), for a y-write vertically. On the healthy
+        // alternating skeleton the bend was recorded against this always holds,
+        // so nothing the user just dragged is ever refused. After a skeleton
+        // change it often does not hold, and the bend is SKIPPED, not deleted:
+        // the route falls back to its clean natural path, and because storage
+        // is untouched, restoring the old geometry (undo, moving the AP back)
+        // restores the bent shape exactly. Checked against the LIVE array, not
+        // the pristine one - an earlier bend may have already moved a shared
+        // neighbour, and the write lands on live geometry.
+        const EPS = 0.5;
         for (const [idx, val] of Object.entries(conn.bends)) {
             const i = parseInt(idx);
             if (i < 1 || i >= points.length - 2) continue;
             const p1 = points[i], p2 = points[i + 1];
-            if (isVert[i]) { p1.x = val; p2.x = val; }
-            else { p1.y = val; p2.y = val; }
+            if (isVert[i]) {
+                if (Math.abs(points[i - 1].y - p1.y) > EPS ||
+                    Math.abs(points[i + 2].y - p2.y) > EPS) continue;
+                p1.x = val; p2.x = val;
+            } else {
+                if (Math.abs(points[i - 1].x - p1.x) > EPS ||
+                    Math.abs(points[i + 2].x - p2.x) > EPS) continue;
+                p1.y = val; p2.y = val;
+            }
         }
         return points;
     }
