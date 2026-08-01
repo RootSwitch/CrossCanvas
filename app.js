@@ -838,9 +838,22 @@
     // each connection to whichever new AP is closest to where it was.
     function setNodeAPCount(node, newCount) {
         const recorded = [];
+        // Bend-carrying connections get their rendered path captured too, so
+        // the bends can be re-fitted after the endpoints re-snap - ratcheting
+        // the AP count re-derives every attached connection at once, which
+        // otherwise strands each one's shape (refitBendsToPath). Waypoint
+        // routes are left alone here: their endpoints re-snap by a few pixels
+        // and the waypoints themselves still stand.
+        const shaped = [];
         state.connections.forEach(c => {
             if (c.fromDevice === node.id) recorded.push({ conn: c, end: 'from', pos: getAbsoluteAP(node, c.fromAP) });
             if (c.toDevice === node.id) recorded.push({ conn: c, end: 'to', pos: getAbsoluteAP(node, c.toAP) });
+            if ((c.fromDevice === node.id || c.toDevice === node.id) &&
+                c.bends && Object.keys(c.bends).length && !(c.waypoints && c.waypoints.length)) {
+                const s = resolveConnEndpoint(c, 'from');
+                const e = resolveConnEndpoint(c, 'to');
+                if (s && e) shaped.push({ conn: c, oldPts: connRoutePoints(c, s, e).map(p => ({ x: p.x, y: p.y })) });
+            }
         });
         node.attachmentPoints = distributeAttachmentPoints(node.w, node.h, newCount);
         recorded.forEach(rec => {
@@ -853,6 +866,8 @@
             if (rec.end === 'from') rec.conn.fromAP = bestIdx;
             else rec.conn.toAP = bestIdx;
         });
+        // Endpoints have their new APs; now put the shapes back.
+        shaped.forEach(sh => refitBendsToPath(sh.conn, sh.oldPts));
     }
 
     function findNode(id) {
@@ -1425,6 +1440,81 @@
             }
         }
         return points;
+    }
+
+    // Re-fit manual bends to the path the user last saw, after a reroute
+    // changed the skeleton underneath them - an endpoint moved to a different
+    // AP, or an AP-count change re-snapping every endpoint on a node.
+    //
+    // Without this the shaped route snapped back to the natural one: the
+    // endpoint-drag path used to DELETE the bends outright, so even a
+    // one-notch same-face AP move threw the user's shape away, and the fresh
+    // route could land across other devices with its handles buried under
+    // someone else's AP dots. The approach is the one setNodeAPCount already
+    // uses for endpoints: record where things WERE, re-derive, then put each
+    // piece back as close as the new skeleton allows.
+    //
+    // Mechanics: the old rendered polyline is a set of RAILS - axis-aligned
+    // runs, each pinned by one cross-axis coordinate, which is exactly what a
+    // bend stores. For each interior segment of the NEW natural route, find
+    // the old rail with the same orientation whose run overlaps it most
+    // (nearest by gap when none overlaps), and bend the segment to that
+    // rail's coordinate. Values on the natural line are not stored - the
+    // route is already there, and storing them would freeze segments that
+    // should stay responsive.
+    //
+    // The re-fit cannot corrupt: fitted values ride the same applyManualBends
+    // guards as hand-placed ones, so a value the new skeleton cannot absorb
+    // is skipped, never smeared into a diagonal. What it CANNOT promise is a
+    // perfect copy - a skeleton with no horizontal interior segment has
+    // nowhere to hang the old horizontal rail, so corners extend to the new
+    // stubs. Close, not identical, by construction.
+    function refitBendsToPath(conn, oldPts) {
+        if (!conn || !oldPts || oldPts.length < 2) return;
+        if (conn.routing === 'straight' || connIsFreeEnded(conn)) { delete conn.bends; return; }
+        const start = resolveConnEndpoint(conn, 'from');
+        const end = resolveConnEndpoint(conn, 'to');
+        if (!start || !end) { delete conn.bends; return; }
+        const nat = routeOrthogonal(start, end, conn);
+        if (nat.length < 4) { delete conn.bends; return; }
+        const isVert = naturalSegmentOrientations(nat);
+        // The old path's rails. A diagonal-ish segment (imported waypoint
+        // routes) classifies by its dominant axis; zero-length ones are noise.
+        const rails = [];
+        for (let i = 0; i < oldPts.length - 1; i++) {
+            const dx = Math.abs(oldPts[i].x - oldPts[i + 1].x);
+            const dy = Math.abs(oldPts[i].y - oldPts[i + 1].y);
+            if (dx < ROUTE_EPS && dy < ROUTE_EPS) continue;
+            const v = dx <= dy;
+            rails.push({
+                v,
+                cross: v ? oldPts[i].x : oldPts[i].y,
+                lo: v ? Math.min(oldPts[i].y, oldPts[i + 1].y) : Math.min(oldPts[i].x, oldPts[i + 1].x),
+                hi: v ? Math.max(oldPts[i].y, oldPts[i + 1].y) : Math.max(oldPts[i].x, oldPts[i + 1].x)
+            });
+        }
+        const bends = {};
+        for (let i = 1; i < nat.length - 2; i++) {
+            const v = isVert[i];
+            const p1 = nat[i], p2 = nat[i + 1];
+            const lo = v ? Math.min(p1.y, p2.y) : Math.min(p1.x, p2.x);
+            const hi = v ? Math.max(p1.y, p2.y) : Math.max(p1.x, p2.x);
+            const natCross = v ? p1.x : p1.y;
+            let best = null, bestOverlap = -Infinity;
+            for (const r of rails) {
+                if (r.v !== v) continue;
+                // Positive: shared run length. Negative: the gap between runs.
+                const overlap = Math.min(hi, r.hi) - Math.max(lo, r.lo);
+                const better = !best ||
+                    overlap > bestOverlap + ROUTE_EPS ||
+                    (overlap > bestOverlap - ROUTE_EPS &&
+                     Math.abs(r.cross - natCross) < Math.abs(best.cross - natCross));
+                if (better) { best = r; bestOverlap = overlap; }
+            }
+            if (best && Math.abs(best.cross - natCross) > ROUTE_EPS) bends[i] = best.cross;
+        }
+        if (Object.keys(bends).length) conn.bends = bends;
+        else delete conn.bends;
     }
 
     // Capture the manual-bend orientations of every connection accepted by
@@ -5304,13 +5394,31 @@
                 const otherAP = de.end === 'from' ? conn.toAP : conn.fromAP;
                 // Don't allow both endpoints on the same AP
                 if (!(devId === otherDevice && apIdx === otherAP)) {
+                    // Capture the path as the user shaped it BEFORE the
+                    // endpoint moves - the re-fit target. This used to be
+                    // `delete conn.bends`, which threw the shape away on
+                    // every endpoint move, including the one-notch nudge to
+                    // an adjacent AP where the shape is obviously still what
+                    // the user wants. Waypoints (imported routes) fold into
+                    // the same capture: they were deleted here anyway, so
+                    // re-expressing them as fitted bends preserves strictly
+                    // more than the old behaviour did.
+                    const hadShape = (conn.bends && Object.keys(conn.bends).length) ||
+                                     (conn.waypoints && conn.waypoints.length);
+                    let oldPts = null;
+                    if (hadShape) {
+                        const os = resolveConnEndpoint(conn, 'from');
+                        const oe = resolveConnEndpoint(conn, 'to');
+                        if (os && oe) oldPts = connRoutePoints(conn, os, oe).map(p => ({ x: p.x, y: p.y }));
+                    }
                     if (de.end === 'from') {
                         conn.fromDevice = devId; conn.fromAP = apIdx; conn.fromPoint = null;
                     } else {
                         conn.toDevice = devId; conn.toAP = apIdx; conn.toPoint = null;
                     }
-                    delete conn.bends; // manual bends/waypoints were placed for the old geometry
                     delete conn.waypoints;
+                    if (oldPts) refitBendsToPath(conn, oldPts);
+                    else delete conn.bends;
                     renderConnection(conn);
                 }
             } else {
@@ -15495,6 +15603,7 @@
             // resolution in front of it, so a test can compute a connection's
             // polyline exactly as the renderer does.
             connRoutePoints, resolveConnEndpoint, routeOrthogonal, getAbsoluteAP, findNode,
+            refitBendsToPath, setNodeAPCount,
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,

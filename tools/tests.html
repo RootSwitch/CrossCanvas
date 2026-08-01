@@ -349,6 +349,32 @@ function bendOneSegment(t, conn, i, offset) {
 
 function segCount(t, conn) { const p = routeOf(t, conn); return p ? p.length : 0; }
 
+// Distance from a point to the nearest point on a polyline.
+function distToPolyline(p, pts) {
+  let best = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ax = pts[i].x, ay = pts[i].y, bx = pts[i + 1].x, by = pts[i + 1].y;
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let u = len2 ? ((p.x - ax) * dx + (p.y - ay) * dy) / len2 : 0;
+    u = Math.max(0, Math.min(1, u));
+    best = Math.min(best, Math.hypot(p.x - (ax + u * dx), p.y - (ay + u * dy)));
+  }
+  return best;
+}
+
+// Discrete Hausdorff distance between two polylines - and it must be BOTH
+// directions. New-vertices-to-old-path alone rewards forgetting: a natural
+// route that abandons the user's detour entirely can sit closer to the old
+// path than the fitted one does, because the old DETOUR is what is far from
+// everything. The old-to-new direction is what charges for dropping it.
+function routeDistance(a, b) {
+  let worst = 0;
+  for (const p of a) worst = Math.max(worst, distToPolyline(p, b));
+  for (const p of b) worst = Math.max(worst, distToPolyline(p, a));
+  return worst;
+}
+
 function routingSuite(t) {
   suite('Routing invariant (orthogonal routes stay orthogonal)', () => {
     // Baseline: a freshly routed connection, no manual bends. If this ever
@@ -472,6 +498,72 @@ function routingSuite(t) {
         'stored ' + storedBefore + ' now ' + JSON.stringify(conn.bends));
       ok('restoring the AP restores the bent shape exactly', after === before,
         after === before ? '' : 'before ' + before.slice(0, 80) + '... after ' + after.slice(0, 80) + '...');
+    }
+
+    // 5. The re-fit: after an AP change, refitBendsToPath keeps the route near
+    //    the shape the user made instead of snapping to natural. Distances are
+    //    routeDistance (symmetric Hausdorff) - see its comment for why one
+    //    direction alone would let "forget the detour" win.
+    //
+    // 5a. The one-notch nudge: same face, adjacent AP, big manual detour. The
+    //     UI used to DELETE the bends here; the re-fit must keep the shape to
+    //     within roughly the AP step, while delete-then-natural is off by the
+    //     full detour.
+    t.applyDiagramData(twoBoxDoc(120, 400, 420, 80, 0, 6));
+    {
+      const conn = t.state.connections[0];
+      bendOneSegment(t, conn, 1, 200);
+      const before = routeOf(t, conn).map(p => ({ x: p.x, y: p.y }));
+      conn.fromAP = 1;
+      delete conn.bends;                        // what the old endpoint-drop did
+      const dNat = routeDistance(routeOf(t, conn), before);
+      t.refitBendsToPath(conn, before);
+      const fitted = routeOf(t, conn);
+      const dFit = routeDistance(fitted, before);
+      const bad = orthoOffenders(fitted);
+      ok('one-notch AP nudge: re-fit keeps the detour (dist ' + Math.round(dFit) + 'px)', dFit <= 60, 'dist ' + dFit);
+      ok('one-notch AP nudge: delete-then-natural loses it (dist ' + Math.round(dNat) + 'px)', dNat >= 150, 'dist ' + dNat);
+      ok('one-notch AP nudge: fitted route is orthogonal', bad.length === 0, bad.join('; '));
+      ok('one-notch AP nudge: bends were recreated', !!conn.bends && Object.keys(conn.bends).length > 0);
+    }
+
+    // 5b. A skeleton-CHANGING move (the stacked pair from the failing set).
+    //     The new skeleton has no segment to hang every old rail on, so the
+    //     promise is weaker - corridor preserved, not shape copied - but it
+    //     must still beat delete-then-natural by a wide margin.
+    t.applyDiagramData(twoBoxDoc(120, 400, 120, 120, 0, 0));
+    {
+      const conn = t.state.connections[0];
+      bendOneSegment(t, conn, 2, 200);
+      const before = routeOf(t, conn).map(p => ({ x: p.x, y: p.y }));
+      conn.fromAP = 4;
+      delete conn.bends;
+      const dNat = routeDistance(routeOf(t, conn), before);
+      t.refitBendsToPath(conn, before);
+      const fitted = routeOf(t, conn);
+      const dFit = routeDistance(fitted, before);
+      const bad = orthoOffenders(fitted);
+      ok('skeleton change: corridor preserved (dist ' + Math.round(dFit) + 'px vs natural ' + Math.round(dNat) + 'px)',
+        dFit <= 140 && dNat >= 200 && dFit < dNat - 50, 'fit ' + dFit + ' nat ' + dNat);
+      ok('skeleton change: fitted route is orthogonal', bad.length === 0, bad.join('; '));
+    }
+
+    // 5c. The ratchet, end to end through the real function: raising the AP
+    //     count re-snaps every endpoint on the node, and setNodeAPCount now
+    //     re-fits each attached bend-carrying connection itself.
+    t.applyDiagramData(twoBoxDoc(120, 400, 120, 120, 0, 0));
+    {
+      const conn = t.state.connections[0];
+      bendOneSegment(t, conn, 2, 200);
+      const before = routeOf(t, conn).map(p => ({ x: p.x, y: p.y }));
+      const a = t.state.devices.find(d => d.id === 'a');
+      t.setNodeAPCount(a, 12);
+      const fitted = routeOf(t, conn);
+      const dFit = routeDistance(fitted, before);
+      const bad = orthoOffenders(fitted);
+      ok('AP-count ratchet 8 -> 12 keeps the shape (dist ' + Math.round(dFit) + 'px)', dFit <= 60, 'dist ' + dFit);
+      ok('AP-count ratchet: route is orthogonal', bad.length === 0, bad.join('; '));
+      ok('AP-count ratchet: bends survived', !!conn.bends && Object.keys(conn.bends).length > 0);
     }
   });
 }
