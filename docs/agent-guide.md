@@ -162,7 +162,9 @@ of the lower device, `1`). `routing`: `straight | orthogonal | rounded`
 `none | arrow | open-arrow | circle | diamond`. `annotations` is a list of
 `{ "id": "a1", "text": "...", "position": 0.5 }` - text pinned along the line
 (`position` 0..1 from the `from` end); network diagrams use these for
-interface names.
+interface names. The connection's own `label` sits at the middle of the line
+unless you add `labelT` (0..1, same convention as an annotation's `position`) -
+useful to shift a label clear of a crossing. Omit `labelT` for the default.
 
 **Zone** - a labeled container drawn behind devices. `shape`:
 `rectangle | ellipse | diamond | parallelogram | pill | document | cylinder`.

@@ -1352,7 +1352,9 @@ body.dark-mode .context-sep { background: rgba(255, 255, 255, 0.12); }
 }
 
 .connection-annotation,
-.connection-annotation-bg {
+.connection-annotation-bg,
+.connection-label,
+.connection-label-bg {
     cursor: grab;
 }
 

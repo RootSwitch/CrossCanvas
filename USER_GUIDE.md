@@ -122,6 +122,8 @@ behind devices, so devices placed inside a zone stay on top.
   arrowheads (arrow, open arrow, diamond, circle).
 - **Label & annotate** - add a label, or double-click anywhere along the line to
   drop a draggable inline annotation.
+- **Slide the label** - drag a connection's label along its own line to move it
+  off a busy crossing. Drop it back near the middle to re-centre it.
 
 Adjust a device's **Attachment Points** count in its properties to control how
 many connection anchor points it offers.

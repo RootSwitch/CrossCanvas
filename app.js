@@ -1999,9 +1999,20 @@
     // while its click target sits in another is the same class of bug as the
     // exporter font mismatch, and five copies of an index expression is exactly
     // how that happens.
-    function connLabelAnchor(points) {
+    // conn.labelT slides the label along the route: 0 at the from end, 1 at the
+    // to end, ABSENT meaning the middle. Absent rather than a written 0.5 so
+    // every board that predates the feature reads identically, and so a label
+    // dragged back to centre stops carrying a field it no longer needs - the
+    // same self-erasing rule manual bends use when they land on their natural
+    // line.
+    const LABEL_T_EPS = 0.02;   // within this of centre IS centre
+    function connLabelT(conn) {
+        const t = conn && typeof conn.labelT === 'number' ? conn.labelT : 0.5;
+        return Math.max(0.02, Math.min(0.98, t));
+    }
+    function connLabelAnchor(points, conn) {
         if (!points || points.length < 2) return { x: 0, y: 0 };
-        return getPointAlongPath(points, 0.5);
+        return getPointAlongPath(points, connLabelT(conn));
     }
 
     function getNearestT(points, px, py) {
@@ -2109,7 +2120,7 @@
         connGroup.appendChild(path);
 
         if (conn.label) {
-            const anchor0 = connLabelAnchor(points);
+            const anchor0 = connLabelAnchor(points, conn);
             const mx = anchor0.x, my = anchor0.y;
 
             const fs = conn.fontSize || 20;
@@ -3453,6 +3464,8 @@
             'waypoint handles (imported routes). A bend dropped on its natural line removes itself.</li>' +
             '<li><strong>Style</strong> - color, thickness, dash pattern, and independent start/end ' +
             'arrowheads. Add a label, or double-click the line for a draggable inline annotation.</li>' +
+            '<li><strong>Slide the label</strong> - drag a connection\'s label along its own line to ' +
+            'clear a busy crossing. Dropped back near the middle it re-centres itself.</li>' +
             '</ul>' +
             '<h4>Text &amp; labels</h4>' +
             '<p>Click the <strong>T</strong> toolbar button, then click the canvas to drop a text ' +
@@ -4560,6 +4573,31 @@
                 return;
             }
 
+            // Check for label drag - slide it along its own route.
+            //
+            // Mirrors annotation dragging deliberately: same hit shape, same
+            // getNearestT projection, same click-vs-drag semantics. A label
+            // that never moved is still just a click that selects the
+            // connection, and double-click-to-edit is untouched because that
+            // runs from handleCanvasDblClick, not from here.
+            //
+            // Without this a label is stuck wherever the route's middle lands,
+            // which is regularly on top of something else and cannot be
+            // rescued - the reason people reach for annotations instead.
+            const lblEl = e.target.closest('.connection-label, .connection-label-bg');
+            if (lblEl) {
+                const lblGroup = lblEl.closest('g[id]');
+                const lblConn = lblGroup ? state.connections.find(c => c.id === lblGroup.id) : null;
+                if (lblConn && lblConn.label) {
+                    preDragSnapshot = snapshotState();
+                    state.draggingLabel = { conn: lblConn, startT: connLabelT(lblConn), moved: false };
+                    clearMultiSelect();
+                    selectZone(null);
+                    selectConnection(lblConn.id);
+                    return;
+                }
+            }
+
             // Check for annotation drag
             const annEl = e.target.closest('.connection-annotation, .connection-annotation-bg');
             if (annEl && annEl.dataset.annId) {
@@ -5099,6 +5137,19 @@
             return;
         }
 
+        if (state.draggingLabel) {
+            const dl = state.draggingLabel;
+            const start = resolveConnEndpoint(dl.conn, 'from');
+            const end = resolveConnEndpoint(dl.conn, 'to');
+            if (start && end) {
+                const cPoints = connRoutePoints(dl.conn, start, end);
+                const nearest = getNearestT(cPoints, point.x, point.y);
+                dl.conn.labelT = Math.max(0.02, Math.min(0.98, nearest.t));
+                dl.moved = true;
+                renderConnection(dl.conn);
+            }
+        }
+
         if (state.draggingAnnotation) {
             const da = state.draggingAnnotation;
             const start = resolveConnEndpoint(da.conn, 'from');
@@ -5495,6 +5546,23 @@
             if (tempLine) tempLine.remove();
             commitPreDragUndo();
             state.draggingEndpoint = null;
+            return;
+        }
+
+        if (state.draggingLabel) {
+            const dl = state.draggingLabel;
+            state.draggingLabel = null;
+            if (!dl.moved) {
+                // A click, not a drag. Nothing changed, so leave no undo step.
+                preDragSnapshot = null;
+                return;
+            }
+            // Dropped back on centre: drop the field rather than store a value
+            // that means "the default". Keeps a board that was only fiddled
+            // with byte-identical to one that was never touched.
+            if (Math.abs(dl.conn.labelT - 0.5) < LABEL_T_EPS) delete dl.conn.labelT;
+            renderConnection(dl.conn);
+            commitPreDragUndo();
             return;
         }
 
@@ -12304,7 +12372,7 @@
             // measure them like node labels, or pills at the diagram's edge
             // get cropped out of exports.
             if (conn.label) {
-                const la = connLabelAnchor(points);
+                const la = connLabelAnchor(points, conn);
                 const mx = la.x, my = la.y;
                 const fs = conn.fontSize || 20;
                 const spans = conn.spans || [[{ text: conn.label, bold: false, italic: false }]];
@@ -14545,7 +14613,7 @@
             if (endArrow !== 'none' && endMarkerSize > 2) drawArrowhead(endArrow, origEnd, points[points.length - 1], endMarkerSize);
 
             if (conn.label) {
-                const la = connLabelAnchor(points);
+                const la = connLabelAnchor(points, conn);
                 const mx = la.x, my = la.y;
                 const cfs = conn.fontSize || 20;
                 const cFamily = ctxFamilyOf(conn);
@@ -15350,7 +15418,7 @@
             if (nearest.distance < 15) {
                 // Check if this is near the main label area first
                 if (conn.label) {
-                    const la = connLabelAnchor(cPoints);
+                    const la = connLabelAnchor(cPoints, conn);
                     const mx = la.x, my = la.y;
                     const fs = conn.fontSize || 20;
                     // Size the label target to the REAL label, not a fixed 60x30
@@ -15438,7 +15506,7 @@
             const end = resolveConnEndpoint(conn, 'to');
             if (!start || !end) continue;
             const points = connRoutePoints(conn, start, end);
-            const la = connLabelAnchor(points);
+            const la = connLabelAnchor(points, conn);
             const mx = la.x, my = la.y;
             const fs = conn.fontSize || 20;
             // Check if click is near the label midpoint
@@ -15639,6 +15707,8 @@
             // polyline exactly as the renderer does.
             connRoutePoints, resolveConnEndpoint, routeOrthogonal, getAbsoluteAP, findNode,
             refitBendsToPath, setNodeAPCount,
+            // label placement along that polyline (conn.labelT)
+            connLabelAnchor, connLabelT, getNearestT, getPointAlongPath,
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,

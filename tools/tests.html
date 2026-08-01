@@ -259,6 +259,7 @@ async function run(t) {
   });
 
   routingSuite(t);
+  labelSlideSuite(t);
   await corpusSuite(t);
   render();
 }
@@ -565,6 +566,81 @@ function routingSuite(t) {
       ok('AP-count ratchet: route is orthogonal', bad.length === 0, bad.join('; '));
       ok('AP-count ratchet: bends survived', !!conn.bends && Object.keys(conn.bends).length > 0);
     }
+  });
+}
+
+// conn.labelT slides a connection's label along its own route. The claims worth
+// pinning are the ones a future refactor could quietly break: absent means
+// centre (so old boards are untouched), a stored value is HONOURED by the same
+// anchor every consumer calls, and the value survives a save/load round trip.
+function labelSlideSuite(t) {
+  suite('Sliding connection labels (conn.labelT)', () => {
+    t.applyDiagramData(twoBoxDoc(120, 400, 420, 120, 0, 6));
+    const conn = t.state.connections[0];
+    conn.label = 'Gi1/0/1';
+    conn.spans = [[{ text: 'Gi1/0/1', bold: false, italic: false }]];
+    const pts = routeOf(t, conn);
+
+    // Absent = centre. The whole back-compat promise is this one line: every
+    // board written before the feature has no labelT, and must anchor exactly
+    // where it always did.
+    const mid = t.getPointAlongPath(pts, 0.5);
+    const anchorDefault = t.connLabelAnchor(pts, conn);
+    ok('no labelT anchors at the midpoint',
+      Math.abs(anchorDefault.x - mid.x) < 0.01 && Math.abs(anchorDefault.y - mid.y) < 0.01,
+      JSON.stringify(anchorDefault) + ' vs ' + JSON.stringify(mid));
+
+    // A stored value moves it, and moves it the RIGHT way: t=0.15 must land
+    // nearer the from end than the midpoint does. Comparing against the ends
+    // rather than a hard-coded pixel keeps the test honest if the router
+    // changes.
+    const from = pts[0], to = pts[pts.length - 1];
+    conn.labelT = 0.15;
+    const near = t.connLabelAnchor(routeOf(t, conn), conn);
+    conn.labelT = 0.85;
+    const far = t.connLabelAnchor(routeOf(t, conn), conn);
+    ok('labelT 0.15 sits nearer the from end',
+      Math.hypot(near.x - from.x, near.y - from.y) < Math.hypot(mid.x - from.x, mid.y - from.y));
+    ok('labelT 0.85 sits nearer the to end',
+      Math.hypot(far.x - to.x, far.y - to.y) < Math.hypot(mid.x - to.x, mid.y - to.y));
+    ok('the two ends are not the same point',
+      Math.hypot(near.x - far.x, near.y - far.y) > 20);
+
+    // Out-of-range values clamp instead of running off the end of the polyline
+    // (a label centred exactly on an endpoint sits on the device).
+    conn.labelT = 5;
+    const over = t.connLabelAnchor(routeOf(t, conn), conn);
+    conn.labelT = -3;
+    const under = t.connLabelAnchor(routeOf(t, conn), conn);
+    ok('labelT clamps at both ends', t.connLabelT({ labelT: 5 }) <= 0.98 && t.connLabelT({ labelT: -3 }) >= 0.02,
+      t.connLabelT({ labelT: 5 }) + ' / ' + t.connLabelT({ labelT: -3 }));
+    ok('a clamped anchor is still on the route',
+      distToPolyline(over, pts) < 1 && distToPolyline(under, pts) < 1);
+    ok('a garbage labelT falls back to centre', t.connLabelT({ labelT: 'x' }) === 0.5);
+
+    // The drag stores what getNearestT projects, so a point taken FROM the
+    // route must round-trip back to roughly the t it came from. This is the
+    // link between the pointer maths and the stored field.
+    const probe = t.getPointAlongPath(pts, 0.3);
+    ok('getNearestT recovers the t a point came from',
+      Math.abs(t.getNearestT(pts, probe.x, probe.y).t - 0.3) < 0.02,
+      String(t.getNearestT(pts, probe.x, probe.y).t));
+
+    // Round trip. Serialize writes connections wholesale, but that is an
+    // implementation detail today - pin it so an added field whitelist cannot
+    // silently drop the value.
+    conn.labelT = 0.22;
+    const reloaded = JSON.parse(JSON.stringify(t.serializeDiagram()));
+    t.applyDiagramData(reloaded);
+    ok('labelT survives serialize -> load', t.state.connections[0].labelT === 0.22,
+      String(t.state.connections[0].labelT));
+
+    // And absent stays absent, rather than being written out as an explicit
+    // 0.5 that would make every re-saved old board differ.
+    delete t.state.connections[0].labelT;
+    const plain = JSON.parse(JSON.stringify(t.serializeDiagram()));
+    ok('a centred label writes no labelT field', !('labelT' in plain.connections[0]),
+      JSON.stringify(plain.connections[0].labelT));
   });
 }
 
