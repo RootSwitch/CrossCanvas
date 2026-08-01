@@ -258,8 +258,177 @@ async function run(t) {
     t.applyTheme('classic', false);
   });
 
+  routingSuite(t);
   await corpusSuite(t);
   render();
+}
+
+// --- routing invariant ---------------------------------------------------
+// An orthogonal (or rounded, which is orthogonal with filleted corners) route
+// has NO legitimate diagonal segment, ever. That makes this an absolute
+// invariant rather than a matter of taste: no tolerance to argue about, no
+// reference shape to compare against, and it holds for every geometry.
+//
+// It exists because manual bends are stored as { segmentIndex: value } against
+// the natural route, and applyManualBends() reads the orientation of segment i
+// from the route AS IT IS NOW while `value` was recorded under whatever the
+// route was THEN. When a reroute changes the skeleton those disagree, the value
+// is written to the wrong axis, and the neighbouring segment stops being
+// axis-aligned. See CROSSCANVAS-BACKLOG.md section 1-MECHANISM.
+const ORTHO_EPS = 0.75;   // generous: real breakage is tens of pixels
+
+function orthoOffenders(pts) {
+  const bad = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = Math.abs(pts[i + 1].x - pts[i].x);
+    const dy = Math.abs(pts[i + 1].y - pts[i].y);
+    if (dx > ORTHO_EPS && dy > ORTHO_EPS) {
+      bad.push('seg' + i + ' (' + Math.round(pts[i].x) + ',' + Math.round(pts[i].y) + ')->(' +
+               Math.round(pts[i + 1].x) + ',' + Math.round(pts[i + 1].y) + ') dx=' +
+               Math.round(dx) + ' dy=' + Math.round(dy));
+    }
+  }
+  return bad;
+}
+
+// The renderer's own pipeline, so the test cannot pass while the shipped path
+// disagrees with it.
+function routeOf(t, conn) {
+  const s = t.resolveConnEndpoint(conn, 'from');
+  const e = t.resolveConnEndpoint(conn, 'to');
+  if (!s || !e) return null;
+  return t.connRoutePoints(conn, s, e);
+}
+
+// 8 attachment points on a box: even indices are edge midpoints, ODD indices
+// are the corners (1 top-right, 3 bottom-right, 5 bottom-left, 7 top-left).
+function twoBoxDoc(ax, ay, bx, by, fromAP, toAP) {
+  const box = (id, x, y) => ({
+    id, x, y, w: 60, h: 60, label: 'Switch', labelPosition: 'bottom',
+    fontSize: 16, fontColor: '#333333', tintColor: null,
+    spans: [[{ text: 'Switch', bold: false, italic: false }]],
+    lineFormats: [{ bold: false, italic: false }],
+    attachmentPoints: [
+      { rx: 30, ry: 0 }, { rx: 60, ry: 0 }, { rx: 60, ry: 30 }, { rx: 60, ry: 60 },
+      { rx: 30, ry: 60 }, { rx: 0, ry: 60 }, { rx: 0, ry: 30 }, { rx: 0, ry: 0 }
+    ]
+  });
+  return {
+    version: 6, diagramTitle: 'routing-invariant', diagramVersion: 1,
+    devices: [box('a', ax, ay), box('b', bx, by)],
+    connections: [{
+      id: 'c1', fromDevice: 'a', fromAP, toDevice: 'b', toAP,
+      color: '#333333', thickness: 2, dash: 'solid', routing: 'rounded',
+      label: '', labelPosition: 'top', labelVAlign: 'top', fontSize: 16,
+      fontColor: '#333333', lineFormats: [], spans: [],
+      startArrow: 'none', endArrow: 'none', annotations: []
+    }],
+    zones: [], textBoxes: [], images: [], groups: [], deviceTemplates: [],
+    imageTable: {}, nextId: 90
+  };
+}
+
+// Shape the connection the way a user does: drag ONE interior segment off its
+// natural line. The value is read from the CURRENT route, which is exactly what
+// the drag handler stores.
+//
+// One segment, not all of them. Bending every interior segment hides the defect:
+// applyManualBends rewrites both endpoints of each bent segment, so if the
+// neighbours are bent too they all move consistently and the polyline stays
+// axis-aligned by accident. The damage shows when a bent segment sits next to a
+// segment that is still free - which is the normal case, and the only case a
+// person actually creates.
+function bendOneSegment(t, conn, i, offset) {
+  const pts = routeOf(t, conn);
+  if (i < 1 || i > pts.length - 3) return false;
+  const vert = Math.abs(pts[i].x - pts[i + 1].x) <= Math.abs(pts[i].y - pts[i + 1].y);
+  conn.bends = {};
+  conn.bends[i] = (vert ? pts[i].x : pts[i].y) + offset;
+  return true;
+}
+
+function segCount(t, conn) { const p = routeOf(t, conn); return p ? p.length : 0; }
+
+function routingSuite(t) {
+  suite('Routing invariant (orthogonal routes stay orthogonal)', () => {
+    // Baseline: a freshly routed connection, no manual bends. If this ever
+    // fails the router itself is broken, not the bend machinery.
+    [[1, 6], [0, 6], [4, 0], [2, 6], [3, 7], [1, 5]].forEach(([fa, ta]) => {
+      t.applyDiagramData(twoBoxDoc(120, 400, 420, 120, fa, ta));
+      const bad = orthoOffenders(routeOf(t, t.state.connections[0]));
+      ok('natural route is orthogonal (AP ' + fa + ' -> ' + ta + ')', bad.length === 0, bad.join('; '));
+    });
+
+    // 1. Change an attachment point on a connection carrying a manual bend.
+    //    Geometry matters: these are STACKED devices, where the natural route
+    //    has enough segments that an AP change can flip one's orientation. A
+    //    diagonal arrangement mostly cannot, which is how the first version of
+    //    this test passed while the bug was plainly reproducible by hand.
+    [
+      { a: [120, 400], b: [120, 120], fa: 0, ta: 0, seg: 1, to: 4 },
+      { a: [120, 400], b: [120, 120], fa: 0, ta: 3, seg: 1, to: 1 },
+      { a: [120, 400], b: [120, 120], fa: 0, ta: 5, seg: 1, to: 7 },
+      { a: [120, 400], b: [120, 120], fa: 0, ta: 0, seg: 3, to: 4 }
+    ].forEach(c => {
+      t.applyDiagramData(twoBoxDoc(c.a[0], c.a[1], c.b[0], c.b[1], c.fa, c.ta));
+      const conn = t.state.connections[0];
+      if (!bendOneSegment(t, conn, c.seg, 40)) { skip('AP ' + c.fa + '->' + c.to + ' seg ' + c.seg, 'route too short'); return; }
+      conn.fromAP = c.to;
+      const bad = orthoOffenders(routeOf(t, conn));
+      ok('AP ' + c.fa + '->' + c.to + ', bend on seg ' + c.seg + ', stays orthogonal',
+        bad.length === 0, bad.join('; '));
+    });
+
+    // 2. Move ONE endpoint device. Bends are absolute and do not travel, so the
+    //    skeleton around them changes underneath the stored index.
+    [
+      { b: [130, 110], fa: 0, ta: 3, seg: 1, mv: [-40, 0] },
+      { b: [130, 110], fa: 0, ta: 3, seg: 3, mv: [-40, 0] },
+      { b: [180, 150], fa: 0, ta: 3, seg: 1, mv: [-90, 60] }
+    ].forEach(c => {
+      t.applyDiagramData(twoBoxDoc(120, 400, c.b[0], c.b[1], c.fa, c.ta));
+      const conn = t.state.connections[0];
+      if (!bendOneSegment(t, conn, c.seg, 40)) { skip('move ' + c.mv, 'route too short'); return; }
+      const b = t.state.devices.find(d => d.id === 'b');
+      b.x += c.mv[0]; b.y += c.mv[1];
+      const bad = orthoOffenders(routeOf(t, conn));
+      ok('move far device by (' + c.mv + '), bend on seg ' + c.seg + ', stays orthogonal',
+        bad.length === 0, bad.join('; '));
+    });
+
+    // 3. A bounded sweep, so this suite cannot quietly go vacuous the way the
+    //    hand-picked fixtures above did. Every AP pair, several geometries,
+    //    every interior segment bent in turn, every other AP tried as the new
+    //    one. Reports the count rather than one case, because the count is what
+    //    tells you whether a fix actually closed the class.
+    let swept = 0, broke = 0, example = '';
+    for (const fa of [0, 1, 2, 3, 4, 5, 6, 7]) {
+      for (const ta of [0, 3, 5, 6]) {
+        for (const geo of [[120, 120], [130, 110], [420, 120]]) {
+          t.applyDiagramData(twoBoxDoc(120, 400, geo[0], geo[1], fa, ta));
+          const conn = t.state.connections[0];
+          const n = segCount(t, conn);
+          for (let seg = 1; seg <= n - 3; seg++) {
+            for (const to of [0, 1, 2, 3, 4, 5, 6, 7]) {
+              if (to === fa) continue;
+              if (!bendOneSegment(t, conn, seg, 40)) continue;
+              const saved = conn.fromAP;
+              conn.fromAP = to;
+              swept++;
+              const bad = orthoOffenders(routeOf(t, conn));
+              if (bad.length) {
+                broke++;
+                if (!example) example = 'AP ' + fa + '->' + to + ' to ' + ta + ' at ' + geo + ' seg ' + seg + ': ' + bad[0];
+              }
+              conn.fromAP = saved;
+            }
+          }
+        }
+      }
+    }
+    ok('sweep: no AP change leaves a diagonal (' + swept + ' combinations)', broke === 0,
+      broke ? broke + ' of ' + swept + ' produced a diagonal; e.g. ' + example : swept + ' clean');
+  });
 }
 
 // Optional: round-trip real corpus files if they are present beside the app

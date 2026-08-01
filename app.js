@@ -15457,6 +15457,11 @@
             // inventory / text parsers (string -> {records,skipped,name} | null)
             parseARPText, parseDnsmasqLeases, parseNmap, parseISCDhcpdLeases,
             parseAnsibleInventory, genericInventoryRecords,
+            // routing: the single chokepoint every consumer goes through
+            // (render, export, hit-testing, annotations), plus the endpoint
+            // resolution in front of it, so a test can compute a connection's
+            // polyline exactly as the renderer does.
+            connRoutePoints, resolveConnEndpoint, routeOrthogonal, getAbsoluteAP, findNode,
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,
