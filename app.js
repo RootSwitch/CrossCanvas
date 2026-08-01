@@ -1982,6 +1982,28 @@
         return { x: points[points.length - 1].x, y: points[points.length - 1].y };
     }
 
+    // Where a connection's label sits on its route.
+    //
+    // This used to key off the middle VERTEX - Math.floor(points.length / 2) -
+    // which is an INDEX, not a distance. On an L-shaped route the middle vertex
+    // IS the corner, so the label landed on the turn; on a long-then-short route
+    // it sat nowhere near the visual middle. Both are the crowded part of a line,
+    // which is much of why label placement felt unusable and drove people to
+    // annotations instead.
+    //
+    // getPointAlongPath is length-weighted and is what annotations have always
+    // used, so this also makes the two features agree about "the middle".
+    //
+    // ONE helper because FIVE call sites need the same answer - render, export
+    // bounds, raster draw, and two hit-tests. A label that DRAWS in one place
+    // while its click target sits in another is the same class of bug as the
+    // exporter font mismatch, and five copies of an index expression is exactly
+    // how that happens.
+    function connLabelAnchor(points) {
+        if (!points || points.length < 2) return { x: 0, y: 0 };
+        return getPointAlongPath(points, 0.5);
+    }
+
     function getNearestT(points, px, py) {
         if (!points || points.length < 2) return { t: 0, distance: Infinity };
 
@@ -2087,15 +2109,8 @@
         connGroup.appendChild(path);
 
         if (conn.label) {
-            const mid = Math.floor(points.length / 2);
-            let mx, my;
-            if (points.length % 2 === 0) {
-                mx = (points[mid - 1].x + points[mid].x) / 2;
-                my = (points[mid - 1].y + points[mid].y) / 2;
-            } else {
-                mx = points[mid].x;
-                my = points[mid].y;
-            }
+            const anchor0 = connLabelAnchor(points);
+            const mx = anchor0.x, my = anchor0.y;
 
             const fs = conn.fontSize || 20;
             const connSpans = conn.spans || [[{ text: conn.label, bold: false, italic: false }]];
@@ -12289,10 +12304,8 @@
             // measure them like node labels, or pills at the diagram's edge
             // get cropped out of exports.
             if (conn.label) {
-                const mid = Math.floor(points.length / 2);
-                const even = points.length % 2 === 0;
-                const mx = even ? (points[mid - 1].x + points[mid].x) / 2 : points[mid].x;
-                const my = even ? (points[mid - 1].y + points[mid].y) / 2 : points[mid].y;
+                const la = connLabelAnchor(points);
+                const mx = la.x, my = la.y;
                 const fs = conn.fontSize || 20;
                 const spans = conn.spans || [[{ text: conn.label, bold: false, italic: false }]];
                 const w = ctxSpansWidth(mctx, spans, fs, ctxFamilyOf(conn));
@@ -14532,15 +14545,8 @@
             if (endArrow !== 'none' && endMarkerSize > 2) drawArrowhead(endArrow, origEnd, points[points.length - 1], endMarkerSize);
 
             if (conn.label) {
-                const mid = Math.floor(points.length / 2);
-                let mx, my;
-                if (points.length % 2 === 0) {
-                    mx = (points[mid - 1].x + points[mid].x) / 2;
-                    my = (points[mid - 1].y + points[mid].y) / 2;
-                } else {
-                    mx = points[mid].x;
-                    my = points[mid].y;
-                }
+                const la = connLabelAnchor(points);
+                const mx = la.x, my = la.y;
                 const cfs = conn.fontSize || 20;
                 const cFamily = ctxFamilyOf(conn);
                 const cSpans = conn.spans || [[{ text: conn.label, bold: false, italic: false }]];
@@ -15344,15 +15350,8 @@
             if (nearest.distance < 15) {
                 // Check if this is near the main label area first
                 if (conn.label) {
-                    const mid = Math.floor(cPoints.length / 2);
-                    let mx, my;
-                    if (cPoints.length % 2 === 0) {
-                        mx = (cPoints[mid - 1].x + cPoints[mid].x) / 2;
-                        my = (cPoints[mid - 1].y + cPoints[mid].y) / 2;
-                    } else {
-                        mx = cPoints[mid].x;
-                        my = cPoints[mid].y;
-                    }
+                    const la = connLabelAnchor(cPoints);
+                    const mx = la.x, my = la.y;
                     const fs = conn.fontSize || 20;
                     // Size the label target to the REAL label, not a fixed 60x30
                     // box: a wide/multi-line label used to overflow it, so a click
@@ -15439,15 +15438,8 @@
             const end = resolveConnEndpoint(conn, 'to');
             if (!start || !end) continue;
             const points = connRoutePoints(conn, start, end);
-            const mid = Math.floor(points.length / 2);
-            let mx, my;
-            if (points.length % 2 === 0) {
-                mx = (points[mid - 1].x + points[mid].x) / 2;
-                my = (points[mid - 1].y + points[mid].y) / 2;
-            } else {
-                mx = points[mid].x;
-                my = points[mid].y;
-            }
+            const la = connLabelAnchor(points);
+            const mx = la.x, my = la.y;
             const fs = conn.fontSize || 20;
             // Check if click is near the label midpoint
             if (Math.abs(point.x - mx) < 60 && Math.abs(point.y - my) < 30) {
