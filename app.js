@@ -3431,6 +3431,8 @@
             '<li><strong>Hold Ctrl (Cmd) as you release</strong> to end a connection exactly where ' +
             'the cursor is, attaching to nothing - the way to draw an unplugged cable onto a device ' +
             'that sits inside a zone, where the drop would otherwise snap to the zone.</li>' +
+            '<li><strong>Ctrl (Cmd) + drag in Connect mode moves an object</strong> instead of drawing ' +
+            'from it - for nudging something into place without switching back to the Select tool.</li>' +
             '<li><strong>Routing</strong> - Straight, Rounded, or Orthogonal per connection.</li>' +
             '<li><strong>Reshape</strong> - selected connections show bend handles (auto-routed) or ' +
             'waypoint handles (imported routes). A bend dropped on its natural line removes itself.</li>' +
@@ -4866,6 +4868,47 @@
                 const apIndex = parseInt(apEl.dataset.apIndex);
                 state.connecting = { fromDevice: deviceId, fromAP: apIndex };
                 return;
+            }
+
+            // Ctrl (Cmd) held = MOVE this object, do not start a connection.
+            //
+            // Body-drag-to-connect is the draw.io behaviour and it is what the
+            // tool is for, but it costs you the other reflex: aiming at the
+            // middle of a node to reposition it draws a line from the nearest
+            // AP instead. Rather than force a trip back to the select tool for
+            // one nudge, Ctrl suspends the connect tool for the length of one
+            // drag. Same key as the connection-drop override, and the same
+            // meaning both times - "not the connection interpretation".
+            //
+            // Deliberately not Alt: Alt already means finer grid and no
+            // alignment guides WHILE dragging, and this needs to compose with
+            // that (Ctrl to grab, Alt to place precisely).
+            if (e.ctrlKey || e.metaKey) {
+                const moveEl = e.target.closest('.device-node, .image-node, .textbox-node, .zone-node');
+                if (moveEl) {
+                    const dev = state.devices.find(d => d.id === moveEl.id);
+                    const zone = !dev ? state.zones.find(z => z.id === moveEl.id) : null;
+                    const img = !dev && !zone ? state.images.find(i => i.id === moveEl.id) : null;
+                    const tb = !dev && !zone && !img ? state.textBoxes.find(t => t.id === moveEl.id) : null;
+                    const obj = dev || zone || img || tb;
+                    if (obj) {
+                        preDragSnapshot = snapshotState();
+                        clearMultiSelect();
+                        // Select through the same helpers the select tool uses,
+                        // so the property panel follows and nothing is left
+                        // half-selected behind the connection panel.
+                        if (dev) { selectZone(null); selectDevice(dev.id); }
+                        else if (zone) { selectDevice(null); selectZone(zone.id); }
+                        else if (img) { selectImage(img.id); }
+                        else { selectDevice(null); selectZone(null); selectTextBox(tb.id); }
+                        state.dragging = {
+                            device: dev || undefined, zone: zone || undefined,
+                            image: img || undefined, textBox: tb || undefined,
+                            offsetX: point.x - obj.x, offsetY: point.y - obj.y
+                        };
+                        return;
+                    }
+                }
             }
 
             // DRAGGING from a device/zone BODY starts a connection from its
