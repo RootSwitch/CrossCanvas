@@ -1090,6 +1090,30 @@ body.dark-mode .context-sep { background: rgba(255, 255, 255, 0.12); }
     transform-origin: center;
 }
 
+/* Connect mode, driven by connectIntentAt so the picture matches the press.
+   .ap-armed is the dot a press would draw from - same red as hovering the dot
+   itself, because it means the same thing and hitting the dot exactly should
+   not look like a different state. .grab-armed is the node saying the press
+   would move it instead, which is the case the AP dots cannot express. */
+.attachment-point.ap-armed {
+    fill: #ff4444;
+    opacity: 1;
+}
+
+.device-node.grab-armed,
+.zone-node.grab-armed {
+    cursor: move;
+}
+
+/* .device-node already carries cursor:move for the select tool, so arming the
+   grab is a no-op there while arming the DRAW needs an explicit override -
+   otherwise the dot lights up red over a move cursor, which is the two halves
+   of the affordance disagreeing. */
+.device-node.connect-armed,
+.zone-node.connect-armed {
+    cursor: crosshair;
+}
+
 .connection-line {
     fill: none;
     cursor: pointer;

@@ -110,8 +110,11 @@ behind devices, so devices placed inside a zone stay on top.
 
 ## Connections
 
-- **Draw** by dragging from a device's edge (or attachment point) to another
-  device. Drop on empty canvas to leave a free-floating endpoint.
+- **Draw** by dragging from a device's attachment point to another device. The
+  dots carry generous invisible margins, so near enough is good enough - but
+  dragging from the middle of an object moves it instead. Hold **Ctrl (Cmd)**
+  to move even when starting on a dot. Drop on empty canvas to leave a
+  free-floating endpoint.
 - **Routing** - choose Straight, Rounded, or Orthogonal per connection.
 - **Reshape** - selected connections show drag handles: **bend handles** on
   auto-routed segments, or **waypoint handles** on imported hand-routed paths.

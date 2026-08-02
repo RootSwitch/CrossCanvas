@@ -260,6 +260,7 @@ async function run(t) {
 
   routingSuite(t);
   labelSlideSuite(t);
+  connectIntentSuite(t);
   await corpusSuite(t);
   render();
 }
@@ -566,6 +567,95 @@ function routingSuite(t) {
       ok('AP-count ratchet: route is orthogonal', bad.length === 0, bad.join('; '));
       ok('AP-count ratchet: bends survived', !!conn.bends && Object.keys(conn.bends).length > 0);
     }
+  });
+}
+
+// Connect mode routes a body press to either a connection or a grab. The
+// gesture itself cannot be tested here - this harness cannot emit mousemove
+// sequences - which is exactly why the DECISION was extracted into a pure
+// function. These pin the routing table; only feel is left for a human.
+function connectIntentSuite(t) {
+  suite('Connect-mode press routing (connectIntentAt)', () => {
+    // 60x60 box, 8 APs: edge midpoints at even indices, corners at odd.
+    // Centre is 30px from each edge AP and ~42px from each corner.
+    const box = { x: 100, y: 100, w: 60, h: 60, attachmentPoints: [
+      { rx: 30, ry: 0 }, { rx: 60, ry: 0 }, { rx: 60, ry: 30 }, { rx: 60, ry: 60 },
+      { rx: 30, ry: 60 }, { rx: 0, ry: 60 }, { rx: 0, ry: 30 }, { rx: 0, ry: 0 } ] };
+    const at = (x, y, z) => t.connectIntentAt(box, x, y, z === undefined ? 1 : z);
+
+    // The complaint this feature exists to fix.
+    ok('dead centre is a GRAB, not a connection', at(130, 130).action === 'move',
+      JSON.stringify(at(130, 130)));
+
+    // Directly on an AP still draws, and from the RIGHT one.
+    const onTop = at(130, 100);
+    ok('pressing an AP connects from that AP', onTop.action === 'connect' && onTop.ap === 0,
+      JSON.stringify(onTop));
+    const onCorner = at(160, 160);
+    ok('corner AP resolves to the corner index', onCorner.action === 'connect' && onCorner.ap === 3,
+      JSON.stringify(onCorner));
+
+    // Slop here is the CAP, not the screen constant: min(18, 0.25 * 60) = 15.
+    ok('12px from an AP still connects (inside slop)', at(130, 112).action === 'connect');
+    ok('25px from an AP grabs (outside slop)', at(130, 125).action === 'move');
+
+    // The property the 0.25 cap exists to give: the grab zone is the middle
+    // HALF of the node. On a 60px box that is y in (115, 145) along the centre
+    // line - so 14px in from an edge AP draws, and 16px in grabs.
+    ok('cap boundary: 14px from the edge AP draws', at(130, 114).action === 'connect');
+    ok('cap boundary: 16px from the edge AP grabs', at(130, 116).action === 'move');
+
+    // THE ZOOM PAIR. Slop is screen pixels, so in diagram units it must GROW as
+    // zoom shrinks. Get the division backwards and exactly this flips.
+    //
+    // It needs a node big enough that the size cap does not bind, which the
+    // 60px box is NOT - there, min(18/0.5, 0.3*60) = min(36, 18) = 18, so the
+    // cap pins slop and zoom changes nothing. Written against a 200px node
+    // where the zoom term is live: 18 at zoom 1, 36 at zoom 0.5.
+    const big = { x: 0, y: 0, w: 200, h: 200, attachmentPoints: [
+      { rx: 100, ry: 0 }, { rx: 200, ry: 0 }, { rx: 200, ry: 100 }, { rx: 200, ry: 200 },
+      { rx: 100, ry: 200 }, { rx: 0, ry: 200 }, { rx: 0, ry: 100 }, { rx: 0, ry: 0 } ] };
+    ok('25px from an AP grabs at zoom 1.0 (slop 18)',
+      t.connectIntentAt(big, 100, 25, 1.0).action === 'move');
+    ok('...and connects at zoom 0.5, because slop doubles in diagram units',
+      t.connectIntentAt(big, 100, 25, 0.5).action === 'connect');
+
+    // And the interaction that broke the first version of this test, pinned so
+    // it is a documented rule rather than a surprise: on a node small enough
+    // that the cap binds, zoom stops mattering. Correct - at 50% a 60px device
+    // is 30 screen px across, and a screen-constant slop would leave no grab
+    // zone at all. Below the cap the split becomes proportional instead.
+    ok('on a small node the CAP wins and zoom stops mattering',
+      at(130, 122, 1.0).action === at(130, 122, 0.5).action);
+
+    // The cap: without it a big slop swallows a small node whole, which is the
+    // original bug on the objects where it was worst.
+    const tiny = { x: 0, y: 0, w: 20, h: 20, attachmentPoints: [
+      { rx: 10, ry: 0 }, { rx: 20, ry: 10 }, { rx: 10, ry: 20 }, { rx: 0, ry: 10 } ] };
+    ok('a 20px node keeps a grabbable centre (cap applies)',
+      t.connectIntentAt(tiny, 10, 10, 1).action === 'move',
+      JSON.stringify(t.connectIntentAt(tiny, 10, 10, 1)));
+
+    // Large zones: long edge runs far from any AP now move instead of drawing
+    // from a distant corner.
+    const zone = { x: 0, y: 0, w: 400, h: 300, attachmentPoints: [
+      { rx: 200, ry: 0 }, { rx: 400, ry: 0 }, { rx: 400, ry: 150 }, { rx: 400, ry: 300 },
+      { rx: 200, ry: 300 }, { rx: 0, ry: 300 }, { rx: 0, ry: 150 }, { rx: 0, ry: 0 } ] };
+    ok('a zone edge far from any AP is a grab',
+      t.connectIntentAt(zone, 100, 0, 1).action === 'move');
+    ok('a zone edge AP still connects',
+      t.connectIntentAt(zone, 200, 0, 1).action === 'connect');
+
+    // Degenerate input must not throw or connect from nowhere.
+    ok('a node with no APs is always a grab',
+      t.connectIntentAt({ x: 0, y: 0, w: 50, h: 50, attachmentPoints: [] }, 25, 25, 1).action === 'move');
+    ok('zoom 0 does not divide by zero',
+      ['move', 'connect'].includes(at(130, 130, 0).action));
+
+    // The old behaviour, kept for connections that legitimately need it (the
+    // DROP end still snaps by nearest AP with no threshold at all).
+    ok('nearestAPIndex is unchanged and still thresholdless',
+      t.nearestAPIndex(box, 130, 129) === 0 && t.nearestAPIndex(box, 130, 131) === 4);
   });
 }
 

@@ -890,6 +890,131 @@
         return best;
     }
 
+    // Connect mode, mousedown on a node body: connection or move?
+    //
+    // The old rule was "any body press starts a connection from the nearest
+    // AP", which is arbitrary exactly where it was used most. Near the centre
+    // of a node all eight APs are nearly equidistant, so a sub-pixel movement
+    // flips which one wins - the user cannot predict it, and a connection
+    // leaving the middle of a node is rarely what was wanted anyway. The Help
+    // text and the user guide both already said "from a device EDGE"; the code
+    // had simply drifted more permissive than the documented behaviour.
+    //
+    // Now the AP dots carry invisible hit slop and the rest of the body is a
+    // grab handle. Slop rather than a centre dead-zone because the dots are
+    // RENDERED (they fade in on hover), so "press near a dot" is learnable
+    // from what is on screen, while "press anywhere except an invisible
+    // middle" is not. It also behaves on big zones, whose edges run a long way
+    // from any AP - those stretches now move the zone instead of drawing from
+    // a distant corner.
+    //
+    // Two details that are easy to get wrong:
+    //   * SLOP IS SCREEN PIXELS, so it is divided by zoom to reach diagram
+    //     units. A fixed diagram radius feels generous at 200% and impossibly
+    //     precise at 50%, because the hand moves in screen space.
+    //   * CAPPED RELATIVE TO THE NODE. A 60x60 device's centre is 30px from
+    //     its edge APs; an uncapped 30px slop would swallow the whole body and
+    //     reintroduce the original problem on the smallest objects, where it
+    //     is worst.
+    // 0.25 is not arbitrary: with APs at the edge midpoints, a node's centre is
+    // half its height from the nearest one, so a slop of a QUARTER of the short
+    // side leaves a grab zone spanning exactly the middle HALF of the node, at
+    // any size the cap governs. 0.3 left only 40% and still caught accidental
+    // draws on 50-60px devices in use. Below about 72px the cap governs and the
+    // split is proportional; above it the flat screen-pixel slop takes over.
+    const AP_GRAB_SLOP = 18;         // screen px around each AP dot (r=6 visible)
+    const AP_GRAB_MAX_FRAC = 0.25;   // never more than this much of the short side
+
+    // Start moving a node from an element already resolved by the caller.
+    // Extracted so connect mode has ONE grab implementation: Ctrl-drag and a
+    // body press away from any AP now enter here by the same door, rather than
+    // the second one growing its own copy of the resolve-select-drag chain.
+    // `e` is optional - when present the gesture records where it started, so
+    // mouseup can tell a grab from a click.
+    function beginObjectDrag(moveEl, point, e) {
+        const dev = state.devices.find(d => d.id === moveEl.id);
+        const zone = !dev ? state.zones.find(z => z.id === moveEl.id) : null;
+        const img = !dev && !zone ? state.images.find(i => i.id === moveEl.id) : null;
+        const tb = !dev && !zone && !img ? state.textBoxes.find(t => t.id === moveEl.id) : null;
+        const obj = dev || zone || img || tb;
+        if (!obj) return false;
+        preDragSnapshot = snapshotState();
+        clearMultiSelect();
+        // Select through the same helpers the select tool uses, so the property
+        // panel follows and nothing is left half-selected behind the connection
+        // panel.
+        if (dev) { selectZone(null); selectDevice(dev.id); }
+        else if (zone) { selectDevice(null); selectZone(zone.id); }
+        else if (img) { selectImage(img.id); }
+        else { selectDevice(null); selectZone(null); selectTextBox(tb.id); }
+        state.dragging = {
+            device: dev || undefined, zone: zone || undefined,
+            image: img || undefined, textBox: tb || undefined,
+            offsetX: point.x - obj.x, offsetY: point.y - obj.y,
+            viaBody: !!e, downX: e ? e.clientX : 0, downY: e ? e.clientY : 0
+        };
+        return true;
+    }
+
+    // Show what a press WOULD do, from the same function that decides it.
+    //
+    // The slop is invisible, which was the flaw in the first version: you could
+    // be a pixel inside it or a pixel outside and the cursor looked identical.
+    // The affordances for this already existed and are good - `cursor:
+    // crosshair` and the red `.attachment-point:hover` fill - they were just
+    // wired to the 6px dot's own hit area, so they only fired where precision
+    // was already easy.
+    //
+    // The obvious fix is to enlarge the AP circle itself and let the browser do
+    // everything. That FAILS here: zoom is applied through the SVG viewBox and
+    // does not re-render, so a radius in diagram units shrinks on screen as you
+    // zoom out - shrinking the forgiveness exactly when aiming is hardest. So
+    // the geometry stays in connectIntentAt (which is zoom-corrected and
+    // capped) and this drives the affordance from THE SAME CALL. One function,
+    // so the picture and the behavior cannot drift apart.
+    let armedAP = null;
+    function updateConnectAffordance(e, point) {
+        const live = state.tool === 'connect' && !state.connecting && !state.dragging
+                     && !state.resizingDevice && !state.resizingZone && !state.resizingImage;
+        const bodyEl = live ? e.target.closest('.device-node, .zone-node') : null;
+        const node = bodyEl
+            ? (state.devices.find(d => d.id === bodyEl.id) || state.zones.find(z => z.id === bodyEl.id))
+            : null;
+        const intent = node ? connectIntentAt(node, point.x, point.y, state.zoom) : null;
+
+        // Repaint only on a real change - mousemove fires constantly and this
+        // runs ahead of every drag branch in the handler.
+        const wantEl = intent && intent.action === 'connect' && bodyEl
+            ? bodyEl.querySelectorAll('.attachment-point')[intent.ap] || null
+            : null;
+        if (wantEl !== armedAP) {
+            if (armedAP) armedAP.classList.remove('ap-armed');
+            if (wantEl) wantEl.classList.add('ap-armed');
+            armedAP = wantEl;
+        }
+        if (bodyEl) {
+            bodyEl.classList.toggle('grab-armed', intent.action === 'move');
+            bodyEl.classList.toggle('connect-armed', intent.action === 'connect');
+        } else {
+            document.querySelectorAll('.grab-armed, .connect-armed')
+                .forEach(el => el.classList.remove('grab-armed', 'connect-armed'));
+        }
+    }
+
+    function connectIntentAt(node, x, y, zoom) {
+        const aps = node.attachmentPoints || [];
+        if (!aps.length) return { action: 'move' };
+        const z = zoom > 0 ? zoom : 1;
+        const slop = Math.min(AP_GRAB_SLOP / z,
+                              AP_GRAB_MAX_FRAC * Math.min(node.w || 0, node.h || 0));
+        let best = -1, bd = Infinity;
+        aps.forEach((ap, i) => {
+            const d = (node.x + ap.rx - x) ** 2 + (node.y + ap.ry - y) ** 2;
+            if (d < bd) { bd = d; best = i; }
+        });
+        return Math.sqrt(bd) <= slop ? { action: 'connect', ap: best } : { action: 'move' };
+    }
+
     // Exact-anchor resolution for imports (px/py are fractions of the node
     // box): reuse an attachment point within 2px of the contact point, else
     // inject one at the precise spot - source files are the ground truth for
@@ -3457,8 +3582,11 @@
             '<li><strong>Hold Ctrl (Cmd) as you release</strong> to end a connection exactly where ' +
             'the cursor is, attaching to nothing - the way to draw an unplugged cable onto a device ' +
             'that sits inside a zone, where the drop would otherwise snap to the zone.</li>' +
-            '<li><strong>Ctrl (Cmd) + drag in Connect mode moves an object</strong> instead of drawing ' +
-            'from it - for nudging something into place without switching back to the Select tool.</li>' +
+            '<li><strong>Drag from an attachment point</strong> to draw. The dots have generous ' +
+            'invisible margins, so you do not have to hit them exactly - but pressing the middle of ' +
+            'an object grabs and moves it instead of drawing from a hard-to-predict edge.</li>' +
+            '<li><strong>Ctrl (Cmd) + drag in Connect mode always moves an object</strong>, even ' +
+            'starting on an attachment point - for repositioning without switching back to Select.</li>' +
             '<li><strong>Routing</strong> - Straight, Rounded, or Orthogonal per connection.</li>' +
             '<li><strong>Reshape</strong> - selected connections show bend handles (auto-routed) or ' +
             'waypoint handles (imported routes). A bend dropped on its natural line removes itself.</li>' +
@@ -4915,6 +5043,22 @@
                 }
             }
         } else if (state.tool === 'connect') {
+            // Ctrl is tested FIRST, ahead of the exact-AP branch. It used to sit
+            // below it, so Ctrl-pressing the 6px dot itself drew a connection -
+            // contradicting the modifier's stated meaning ("not the connection
+            // interpretation") on the one part of a node where a user aiming to
+            // move is most likely to be careful about where they press. Nothing
+            // is lost by the reorder: Ctrl-press-to-DRAW was never needed, since
+            // a plain press on an AP already draws.
+            if (e.ctrlKey || e.metaKey) {
+                // No `e`: Ctrl means "suspend the connect tool for one drag", so
+                // a Ctrl-press that never moves selects and STAYS in connect
+                // mode. Only the plain body grab inherits the click-exits-to-
+                // select rule, which is the behavior it is replacing.
+                const moveEl = e.target.closest('.device-node, .image-node, .textbox-node, .zone-node');
+                if (moveEl && beginObjectDrag(moveEl, point)) return;
+            }
+
             const apEl = e.target.closest('.attachment-point');
             if (apEl) {
                 const deviceId = apEl.dataset.deviceId;
@@ -4935,51 +5079,32 @@
             //
             // Deliberately not Alt: Alt already means finer grid and no
             // alignment guides WHILE dragging, and this needs to compose with
-            // that (Ctrl to grab, Alt to place precisely).
-            if (e.ctrlKey || e.metaKey) {
-                const moveEl = e.target.closest('.device-node, .image-node, .textbox-node, .zone-node');
-                if (moveEl) {
-                    const dev = state.devices.find(d => d.id === moveEl.id);
-                    const zone = !dev ? state.zones.find(z => z.id === moveEl.id) : null;
-                    const img = !dev && !zone ? state.images.find(i => i.id === moveEl.id) : null;
-                    const tb = !dev && !zone && !img ? state.textBoxes.find(t => t.id === moveEl.id) : null;
-                    const obj = dev || zone || img || tb;
-                    if (obj) {
-                        preDragSnapshot = snapshotState();
-                        clearMultiSelect();
-                        // Select through the same helpers the select tool uses,
-                        // so the property panel follows and nothing is left
-                        // half-selected behind the connection panel.
-                        if (dev) { selectZone(null); selectDevice(dev.id); }
-                        else if (zone) { selectDevice(null); selectZone(zone.id); }
-                        else if (img) { selectImage(img.id); }
-                        else { selectDevice(null); selectZone(null); selectTextBox(tb.id); }
-                        state.dragging = {
-                            device: dev || undefined, zone: zone || undefined,
-                            image: img || undefined, textBox: tb || undefined,
-                            offsetX: point.x - obj.x, offsetY: point.y - obj.y
-                        };
-                        return;
-                    }
-                }
-            }
+            // that (Ctrl to grab, Alt to place precisely). The Ctrl branch
+            // itself now runs above the exact-AP check - see there.
 
-            // DRAGGING from a device/zone BODY starts a connection from its
-            // nearest AP (no need to land on the small AP dots - the drop end
-            // already snaps the same way). A plain CLICK keeps the old behavior:
-            // exit to select mode with the node selected. Disambiguated on
-            // mouseup by pointer travel (viaBody + downX/downY).
+            // A press on a device/zone BODY now routes through connectIntentAt:
+            // near an AP it draws (the dots carry invisible slop, so there is
+            // still no need to hit the 6px circle exactly), anywhere else it
+            // grabs the object. See connectIntentAt for why slop beats a centre
+            // dead-zone. A plain CLICK keeps the old behavior on BOTH paths -
+            // exit to select mode with the node selected - disambiguated on
+            // mouseup by pointer travel (downX/downY).
             const deviceEl = e.target.closest('.device-node');
             const zoneEl = !deviceEl ? e.target.closest('.zone-node') : null;
-            if (deviceEl) {
-                const dev = state.devices.find(d => d.id === deviceEl.id);
-                if (dev) state.connecting = { fromDevice: dev.id, fromAP: nearestAPIndex(dev, point.x, point.y),
-                                              viaBody: true, downX: e.clientX, downY: e.clientY };
-                return;
-            } else if (zoneEl) {
-                const zone = state.zones.find(z => z.id === zoneEl.id);
-                if (zone) state.connecting = { fromDevice: zone.id, fromAP: nearestAPIndex(zone, point.x, point.y),
-                                               viaBody: true, downX: e.clientX, downY: e.clientY };
+            const bodyEl = deviceEl || zoneEl;
+            if (bodyEl) {
+                const node = deviceEl
+                    ? state.devices.find(d => d.id === deviceEl.id)
+                    : state.zones.find(z => z.id === zoneEl.id);
+                if (node) {
+                    const intent = connectIntentAt(node, point.x, point.y, state.zoom);
+                    if (intent.action === 'connect') {
+                        state.connecting = { fromDevice: node.id, fromAP: intent.ap,
+                                             viaBody: true, downX: e.clientX, downY: e.clientY };
+                    } else {
+                        beginObjectDrag(bodyEl, point, e);
+                    }
+                }
                 return;
             } else {
                 const connEl = e.target.closest('.connection-line') || e.target.closest('.connection-label') || e.target.closest('.connection-label-bg');
@@ -5011,6 +5136,8 @@
         const point = getSVGPoint(e);
         // Hold Alt while dragging/resizing any object to snap at half-grid (5px)
         const fineStep = snapStepFor(e);
+
+        updateConnectAffordance(e, point);
 
         if (state.draggingWaypoint) {
             const dw = state.draggingWaypoint;
@@ -5576,7 +5703,16 @@
             clearGuideLines();   // moves AND resizes draw guide lines now
         }
         if (state.dragging) {
+            // A connect-mode body grab that never moved is a CLICK, and a click
+            // meant "select this and get me to the select tool" long before the
+            // grab existed. Same 5px threshold and same outcome as the
+            // connection path's viaBody check, so the two body gestures agree
+            // about what a click is - the press just has one more way to end.
+            const grab = state.dragging;
             state.dragging = null;
+            if (grab.viaBody && Math.hypot(e.clientX - grab.downX, e.clientY - grab.downY) < 5) {
+                setTool('select');
+            }
             updateCanvasSize();
         }
         if (state.resizingZone) {
@@ -15709,6 +15845,9 @@
             refitBendsToPath, setNodeAPCount,
             // label placement along that polyline (conn.labelT)
             connLabelAnchor, connLabelT, getNearestT, getPointAlongPath,
+            // connect-mode press routing, extracted so it is testable without
+            // a drag gesture (this harness cannot emit mousemove sequences)
+            connectIntentAt, nearestAPIndex,
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,
