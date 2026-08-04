@@ -386,6 +386,12 @@ Widen for long hostnames that would otherwise clip into neighbors; heighten to
 make room for multi-line labels (e.g. after **Map Details to Label**). They
 apply to the next import; leave both at 100% for the default packing.
 
+**Columns.** *Import Columns* in **Default Settings** sets how many columns
+each Location zone lays out. *Auto* (the default) packs near-square up to 4
+wide; a fixed value means exactly that many, trading depth for width - a long
+single-Location list at 16 becomes a wall instead of a column. Devices with no
+Location follow the same setting. Applies to the next import.
+
 ### Auto-detected vendor formats
 
 Several management-platform exports are recognized by their column

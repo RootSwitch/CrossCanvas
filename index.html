@@ -291,6 +291,10 @@
                         <input type="range" id="import-vspace" min="100" max="250" step="10" value="100">
                     </div>
                     <div class="default-size-control">
+                        <label title="Columns per Location zone on inventory-CSV import. Auto packs near-square up to 4 wide; a fixed number trades depth for width - 16 turns a long single-Location list into a wall instead of a column">Import Columns: <span id="import-cols-label">Auto</span></label>
+                        <input type="range" id="import-cols" min="0" max="24" step="1" value="0">
+                    </div>
+                    <div class="default-size-control">
                         <label title="Order devices within each zone on inventory-CSV import. MAC groups by vendor (OUI); Device type groups cameras/printers/PCs directly.">Import Sort</label>
                         <select id="import-sort" style="width:100%">
                             <option value="file" selected>File order</option>

@@ -66,6 +66,12 @@
     let IMPORT_VSPACE = 1;
     // How devices are ordered within each zone on inventory-CSV import.
     let IMPORT_SORT = 'file';   // 'file' | 'mac' | 'type' | 'label'
+    // Columns per Location on inventory-CSV import. 0 = Auto, the historical
+    // near-square packing capped at 4 - which cascades a long single-Location
+    // list far down the canvas. A fixed value means exactly that many columns
+    // (fewer only when a zone holds fewer devices), trading depth for width -
+    // e.g. 16 turns a 400-row one-site import into a wall instead of a well.
+    let IMPORT_MAX_COLS = 0;    // 0 = Auto | 1..24 fixed
     const AP_RADIUS = 6;
 
     let state = {
@@ -6182,6 +6188,11 @@
     document.getElementById('import-vspace').addEventListener('input', (e) => {
         IMPORT_VSPACE = parseInt(e.target.value) / 100;
         document.getElementById('import-vspace-label').textContent = e.target.value + '%';
+    });
+    document.getElementById('import-cols').addEventListener('input', (e) => {
+        IMPORT_MAX_COLS = parseInt(e.target.value);
+        document.getElementById('import-cols-label').textContent =
+            IMPORT_MAX_COLS > 0 ? String(IMPORT_MAX_COLS) : 'Auto';
     });
     document.getElementById('import-sort').addEventListener('change', (e) => {
         IMPORT_SORT = e.target.value;
@@ -14008,7 +14019,13 @@
             const blocks = [];
             if (node.devices.length) {
                 const n = node.devices.length;
-                const cols = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(n))));
+                // Auto keeps the historical near-square shape; a fixed setting
+                // means what it says, clamped only by how many devices exist.
+                // Root's loose grid (no-Location devices) flows through here
+                // too, so one setting governs both.
+                const cols = IMPORT_MAX_COLS > 0
+                    ? Math.max(1, Math.min(n, IMPORT_MAX_COLS))
+                    : Math.min(4, Math.max(1, Math.ceil(Math.sqrt(n))));
                 blocks.push({
                     grid: node.devices, cols: cols,
                     w: Math.min(n, cols) * CELL_W,
@@ -15848,6 +15865,9 @@
             // connect-mode press routing, extracted so it is testable without
             // a drag gesture (this harness cannot emit mousemove sequences)
             connectIntentAt, nearestAPIndex,
+            // inventory import end-to-end (text/CSV detection -> layout),
+            // driven by the REAL Default Settings controls
+            importInventoryCSV,
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,
