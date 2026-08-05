@@ -353,6 +353,16 @@ dumps. Untick *First row is headers* if you copied data without its header row.
 **Help → Inventory Import Formats** documents everything in-app and offers a
 **Download example CSV** button (a ready-to-fill `crosscanvas-inventory-template.csv`).
 
+**What an imported board carries.** The canvas shows labels; the saved
+`.xcanvas` also holds every hidden Device Details field the import brought in -
+hostnames, addresses, serials, OS versions - as plain, text-parseable JSON.
+That is the feature (it is what makes the live wall and CSV round-trips work),
+but it means the *file* is your inventory even when the *picture* is generic.
+Share exported images freely (PNG and SVG carry only what is drawn); share the
+`.xcanvas` itself the way you would share the spreadsheet it came from. If a
+board feeds a PingCanvas kiosk, the kiosk serves that file to anyone who can
+reach its port - see PingCanvas's Security posture notes before exposing it.
+
 The CSV needs a header row; column names are case-insensitive:
 
 | Column | Purpose |

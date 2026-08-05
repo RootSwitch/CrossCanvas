@@ -3702,7 +3702,12 @@
             'exports, DHCP lease exports, and raw ' +
             '<code>arp -a</code> output (.txt) round out the auto-detected set - quick homelab onboarding. ' +
             'See <em>Help → Inventory Import Formats</em> for the plain column spec and an example ' +
-            'download.</p>',
+            'download.</p>' +
+            '<p><strong>The saved file is your inventory.</strong> The canvas shows labels; the ' +
+            '<code>.xcanvas</code> also carries every hidden Device Details field the import ' +
+            'brought in, as plain text. Exported images (PNG / SVG) carry only what is drawn - ' +
+            'share those freely, and share the file itself the way you would share the ' +
+            'spreadsheet it came from.</p>',
         inventoryFormat:
             '<h4>Inventory import</h4>' +
             '<p><strong>File → Import Inventory</strong> turns a device list into a laid-out ' +
@@ -3710,6 +3715,11 @@
             'connections are drawn. The vendor exports and command dumps below are detected ' +
             'automatically; any other CSV opens a column mapper so you can assign the columns ' +
             'yourself.</p>' +
+            '<p><strong>The saved file is your inventory.</strong> The canvas shows labels; the ' +
+            '<code>.xcanvas</code> also carries every hidden Device Details field the import ' +
+            'brought in, as plain text. Exported images (PNG / SVG) carry only what is drawn - ' +
+            'share those freely, and share the file itself the way you would share the ' +
+            'spreadsheet it came from.</p>' +
             '<h4>The plain CSV template</h4>' +
             '<p>A header row is required; column names are case-insensitive.</p>' +
             '<table><thead><tr><th>Column</th><th>Purpose</th></tr></thead><tbody>' +
