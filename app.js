@@ -11196,6 +11196,26 @@
             }
         });
 
+        // PingCanvas's wall split stamps its stripped copies. Editing one is
+        // the treacherous failure: the wall board LOOKS complete (geometry and
+        // labels are all there), so someone fetches it from the kiosk URL,
+        // edits, saves it back over the source - and every hidden Device
+        // Details field is silently gone. Warn at open, in the editor only:
+        // the kiosk (EMBED) loads wall copies by design, and the test harness
+        // loads programmatically.
+        if (data.wallSanitized && !EMBED && !CCTEST) {
+            showDialog({
+                title: 'This is a generated wall copy',
+                body: 'This board was produced by PingCanvas\'s wall split: device data ' +
+                    'fields (hostnames, addresses, serials, customs) were stripped for ' +
+                    'serving, and monitored devices carry only an opaque Monitor ID.\n\n' +
+                    'It is fine to look at - but do not edit it and save it back over ' +
+                    'the original: the original board (usually under data/.private/ on ' +
+                    'the wall host) is the one with your data, and the poller ' +
+                    'regenerates this copy from it automatically.'
+            });
+        }
+
         // The shape check above catches a non-array `devices`, but not a bad
         // ELEMENT - a null in the array, spans:5, a missing attachmentPoints -
         // which passes here, gets swapped into state, then throws during
