@@ -15918,7 +15918,7 @@
         };
         const qBoard = q.get('board');
         let boardURL = null;
-        if (qBoard) {
+        if (qBoard && qBoard !== 'from-opener') {
             // Same-origin only, enforced HERE: the CSP header exists only on
             // deployments that honor web.config, and "any static host" is a
             // supported layout - without this check a crafted cross-origin
@@ -15926,7 +15926,28 @@
             try { boardURL = new URL(qBoard, location.href); } catch (e) { /* malformed */ }
             if (boardURL && boardURL.origin !== location.origin) boardURL = null;
         }
-        if (qBoard && !boardURL) {
+        if (qBoard === 'from-opener' && window.opener) {
+            // LaunchCanvas hands the board over by postMessage: the source
+            // file lives in the private data directory, which the web tier
+            // never serves, so no URL on THIS origin can carry it - only the
+            // portal's authenticated API can read it, from its own port.
+            // Accept ONE document, only from the window that opened us, only
+            // from an origin on this same host - the trust boundary the
+            // suite's shared-secret SSO already draws between its ports.
+            const onHandoff = (ev) => {
+                let sameHost = false;
+                try { sameHost = new URL(ev.origin).hostname === location.hostname; } catch (e) { /* refuse */ }
+                if (!sameHost || ev.source !== window.opener) return;
+                if (!ev.data || ev.data.type !== 'crosscanvas-board') return;
+                window.removeEventListener('message', onHandoff);
+                try { applyDiagramData(ev.data.board); finishQuery(); }
+                catch (err) { alert('Could not open the handed-over board: ' + err.message); }
+            };
+            window.addEventListener('message', onHandoff);
+            window.opener.postMessage({ type: 'crosscanvas-ready' }, '*');
+        } else if (qBoard === 'from-opener') {
+            alert('This link only works when opened from LaunchCanvas - the board travels from its page, not from a URL.');
+        } else if (qBoard && !boardURL) {
             alert('Board URLs must be same-origin: a path next to the app, like ?board=boards/lab.xcanvas');
         } else if (boardURL) {
             fetch(boardURL, { cache: 'no-store' })
