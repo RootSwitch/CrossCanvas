@@ -4105,16 +4105,20 @@
         const template = state.deviceTemplates.find(t => t.id === e.target.value);
         if (!template) return;
         pushUndo();
-        // A fresh icon arrives like a newly PLACED device: wearing the theme's
-        // Device Color. tintColor=null (untinted stencil blue) is right only
-        // when no theme tint is set - under a theme it read as "swap recolored
-        // everything to blue".
-        const swapTint = (DEFAULT_DEVICE_TINT && isSVGDataURL(template.image)) ? DEFAULT_DEVICE_TINT : null;
+        // The tint belongs to each DEVICE, not the icon: a swap keeps every
+        // device's own color, and only untinted ones dress like newly placed
+        // (the theme's Device Color - tintColor=null would read as "swap
+        // recolored everything to blue" under a theme). The old always-reset
+        // rule fixed the blue flip but also erased deliberate per-device
+        // colors; a red box stays red through an icon change.
+        const isSvg = isSVGDataURL(template.image);
+        const freshTint = (DEFAULT_DEVICE_TINT && isSvg) ? DEFAULT_DEVICE_TINT : null;
         batchTargets.devices.forEach(d => {
+            const keepTint = d.tintColor || freshTint;
             d.templateId = template.id;
             d.originalImage = template.image;
-            d.tintColor = swapTint;
-            d.image = swapTint ? tintSVG(template.image, swapTint) : template.image;
+            d.tintColor = keepTint;
+            d.image = (keepTint && isSvg) ? tintSVG(template.image, keepTint) : template.image;
         });
         renderAllDevices(); setDirty(true);
         e.target.value = '';   // back to "keep" so re-opening the same option re-applies
@@ -7298,20 +7302,27 @@
         const template = state.deviceTemplates.find(t => t.id === e.target.value);
         if (!template) return;
         pushUndo();
-        // Same rule as the batch swap: a fresh icon arrives like a newly
-        // placed device, wearing the theme's Device Color (untinted only
-        // when no theme tint is set).
-        const swapTint = (DEFAULT_DEVICE_TINT && isSVGDataURL(template.image)) ? DEFAULT_DEVICE_TINT : null;
+        // Same rule as the batch swap: the tint belongs to the DEVICE, not
+        // the icon - a box someone painted red stays red when its picture
+        // changes. Only an untinted device dresses like a newly placed one
+        // (the theme's Device Color). The old rule reset EVERY swap to the
+        // theme tint - itself a fix for null flipping themed boards to
+        // stencil blue - and over-corrected: a deliberately red device came
+        // back blue. tintColor survives even a swap onto a raster icon
+        // (where it cannot apply), so swapping back to an SVG restores it.
+        const isSvg = isSVGDataURL(template.image);
+        const keepTint = device.tintColor ||
+            ((DEFAULT_DEVICE_TINT && isSvg) ? DEFAULT_DEVICE_TINT : null);
         device.templateId = template.id;
         device.originalImage = template.image;
-        device.tintColor = swapTint;
-        device.image = swapTint ? tintSVG(template.image, swapTint) : template.image;
+        device.tintColor = keepTint;
+        device.image = (keepTint && isSvg) ? tintSVG(template.image, keepTint) : template.image;
         renderDevice(device);
         // Refresh tint section visibility
         const tintSection = document.getElementById('device-tint-section');
-        if (isSVGDataURL(template.image)) {
+        if (isSvg) {
             tintSection.style.display = '';
-            document.getElementById('device-tint-color').value = swapTint || STENCIL_FRAME_BLUE;
+            document.getElementById('device-tint-color').value = keepTint || STENCIL_FRAME_BLUE;
         } else {
             tintSection.style.display = 'none';
         }
