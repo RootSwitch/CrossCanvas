@@ -2221,6 +2221,12 @@
 
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.classList.add('connection-line');
+        // fill="none" as an ATTRIBUTE, not only in style.css: the SVG export
+        // clones this element out from under the stylesheet, and a path's
+        // default fill is BLACK - every orthogonal/rounded connection then
+        // ships with the region between its route and the straight chord
+        // filled solid. In-app the CSS masked it; the export told the truth.
+        path.setAttribute('fill', 'none');
         path.setAttribute('d', pathStr);
         path.setAttribute('stroke', strokeColor);
         path.setAttribute('stroke-width', conn.thickness);
