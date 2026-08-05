@@ -13481,6 +13481,59 @@
                 });
                 return { records: records, skipped: skipped };
             }
+        },
+        {
+            // Get-ADComputer | Select Name,DNSHostName,IPv4Address,
+            //   OperatingSystem,Description,CanonicalName | Export-Csv
+            // CanonicalName + OperatingSystem together only occur in AD
+            // exports, so plain CSVs cannot false-positive.
+            name: 'Active Directory computers (Get-ADComputer)',
+            detect: (lower) => lower.includes('canonicalname') &&
+                lower.includes('operatingsystem'),
+            translate: (headers, lower, dataRows) => {
+                const col = (n) => lower.indexOf(n);
+                const iName = col('name'), iDNS = col('dnshostname'),
+                    iIP = col('ipv4address'), iOS = col('operatingsystem'),
+                    iDesc = col('description'), iCanon = col('canonicalname');
+                const records = [];
+                let skipped = 0;
+                dataRows.forEach(r => {
+                    if (!r.length || r.every(c => !String(c == null ? '' : c).trim())) return;
+                    const g = (i) => (i >= 0 && i < r.length) ? String(r[i] == null ? '' : r[i]).trim() : '';
+                    const name = g(iName);
+                    if (!name) { skipped++; return; }
+                    const fields = {};
+                    const set = (k, v) => { if (v) fields[k] = v; };
+                    set('Hostname', g(iDNS) || name);
+                    // IPv4Address is a CONSTRUCTED property - the cmdlet
+                    // resolves it via DNS at query time, it is not stored in
+                    // AD - so machines that have been off the network export
+                    // blank. Blank is honest here: the device imports
+                    // unmonitorable rather than with a stale address.
+                    set('IP-Address', g(iIP));
+                    set('Description', g(iDesc));
+                    const os = g(iOS);
+                    set('Operating System', os);
+                    // CanonicalName is domain/OU/.../OU/ComputerName. The
+                    // first segment is the domain root (constant across the
+                    // export, same reason CC drops "Global") and the LAST is
+                    // the computer's own CN - keeping it would put every host
+                    // in a zone named after itself, which the user's real
+                    // export confirmed. The OU path between them is the
+                    // Location. A machine directly under the domain root has
+                    // no OUs left and lands in the loose grid.
+                    set('Location', g(iCanon).split('/').map(s => s.trim())
+                        .filter(Boolean).slice(1, -1).join('/'));
+                    // OS-based stencil. Checked against /server/ FIRST:
+                    // guessClientStencil matches 'windows' before 'server',
+                    // so "Windows Server 2022" alone would come back a client.
+                    const stencil = /server/i.test(os) ? 'server'
+                        : guessClientStencil(os);
+                    records.push({ label: name, stencilName: stencil,
+                                   fields: fields, x: null, y: null });
+                });
+                return { records: records, skipped: skipped };
+            }
         }
     ];
 

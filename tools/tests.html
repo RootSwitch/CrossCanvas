@@ -142,6 +142,49 @@ async function run(t) {
     eq('STENCIL_FRAME_BLUE constant', C().STENCIL_FRAME_BLUE, '#2d67b9');
   });
 
+  suite('Vendor profile: Active Directory computers', () => {
+    // The header row IS the detection signature - taken from a real
+    // Get-ADComputer export, not invented.
+    const csv = 'Name,DNSHostName,IPv4Address,OperatingSystem,Description,CanonicalName\n' +
+      'DC-1,dc-1.corp.local,192.168.1.2,Windows Server 2022 Datacenter,,corp.local/Domain Controllers/DC-1\n' +
+      'FS-1,fs-1.corp.local,192.168.1.20,Windows Server 2019 Standard,File server,corp.local/Servers/File Servers/FS-1\n' +
+      'PC-07,pc-07.corp.local,192.168.1.107,Windows 11 Pro,,corp.local/Workstations/PC-07\n' +
+      'STALE-BOX,stale-box.corp.local,,Windows 10 Pro,,corp.local/Workstations/STALE-BOX\n' +
+      'ROOTED,rooted.corp.local,192.168.1.9,Windows 11 Pro,,corp.local/ROOTED\n';
+    t.importInventoryCSV(csv, 'ad-computers.csv');
+    // The summary dialog opens in the APP's document (the iframe), not the
+    // runner's - close it there or it blocks later suites' rendering.
+    document.querySelector('iframe').contentDocument.getElementById('app-dialog').close();
+    const dev = (l) => t.state.devices.find(d => d.label === l);
+    const zoneNames = t.state.zones.map(z => z.label).sort();
+
+    ok('all five rows import', t.state.devices.length === 5, String(t.state.devices.length));
+    // The leaf trim: no device may sit in a zone named after itself, and the
+    // domain root must not become an all-enclosing zone.
+    ok('zones are the OUs only - no self-zones, no domain zone',
+      JSON.stringify(zoneNames) === JSON.stringify(['Domain Controllers', 'File Servers', 'Servers', 'Workstations']),
+      JSON.stringify(zoneNames));
+    ok('nested OU path nests (Servers/File Servers)',
+      dev('FS-1').fields.Location === 'Servers/File Servers', dev('FS-1').fields.Location);
+    ok('machine directly under the domain root has NO Location (loose grid)',
+      !dev('ROOTED').fields.Location);
+    ok('DNSHostName lands as Hostname', dev('DC-1').fields.Hostname === 'dc-1.corp.local');
+    ok('OS becomes a custom field', dev('PC-07').fields['Operating System'] === 'Windows 11 Pro');
+    // The stale-DNS case from the user's real domain: blank IPv4Address must
+    // import as ABSENT, not as an empty-string field.
+    ok('blank IPv4Address imports with no IP-Address field',
+      !('IP-Address' in dev('STALE-BOX').fields));
+    ok('IP present when DNS resolved it', dev('FS-1').fields['IP-Address'] === '192.168.1.20');
+    // Stencil: "Windows Server ..." must NOT fall into guessClientStencil's
+    // 'windows' -> client trap. The identity a resolved stencil leaves on the
+    // device is templateId, so the testable claims are: both resolved (non
+    // null - blank stencils carry null), and to DIFFERENT templates.
+    ok('Server OS and client OS resolve to different, real stencils',
+      dev('DC-1').templateId !== null && dev('PC-07').templateId !== null &&
+      dev('DC-1').templateId !== dev('PC-07').templateId,
+      'DC-1=' + dev('DC-1').templateId + ' PC-07=' + dev('PC-07').templateId);
+  });
+
   suite('Inventory / text parsers', () => {
     const arp = t.parseARPText('  192.168.4.1        00-50-56-a9-dc-34     dynamic');
     ok('parseARPText windows line', arp && arp.records.length === 1 && arp.records[0].fields['IP-Address'] === '192.168.4.1');
