@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CrossCanvas Diagram Editor</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <!-- Installable as a desktop app (Edge/Chrome: install icon in the address
+         bar). The manifest also registers .xcanvas/.netdraw file associations
+         for the installed app. Deliberately NO service worker: the app is
+         LAN-served and a caching layer would resurrect the stale-app.js
+         problem; "installed" here means a window and a file association, not
+         an offline copy. Requires a secure context (https with a TRUSTED cert,
+         or localhost) - a clicked-through self-signed warning disables it. -->
+    <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>

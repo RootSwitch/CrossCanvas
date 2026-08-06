@@ -109,6 +109,23 @@ your browser) - unzip anywhere and open `index.html` to run it entirely from
 your machine. Imported images are gated to inert `data:` URIs, and untrusted values
 are escaped on every export path.
 
+## Install as a desktop app (optional)
+
+Any hosted copy can be installed as a windowed desktop app straight from the
+browser - Edge/Chrome show an install icon in the address bar (or *Apps →
+Install this site as an app*). No installer runs and nothing is downloaded,
+so there is no code-signing or SmartScreen involved: the "app" is the browser
+in a frameless window with its own taskbar identity. The installed app also
+registers the **`.xcanvas` file association** - double-click a diagram and it
+opens in the editor, and **File → Save writes back to that same file** instead
+of downloading a copy.
+
+Two boundaries, both by design: installation requires a secure context
+(HTTPS with a certificate the machine actually trusts, or `localhost` - a
+clicked-through self-signed warning does not count), and there is
+deliberately **no offline caching** - the installed app always loads the
+current files from your host, so an update there is an update everywhere.
+
 ## Hosting
 
 The app is a static site with no build step - the publish directory is the

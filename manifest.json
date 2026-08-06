@@ -1,0 +1,23 @@
+{
+    "name": "CrossCanvas Diagram Editor",
+    "short_name": "CrossCanvas",
+    "description": "Draw network diagrams in the browser - stencils, zones, inventory import, Visio/Gliffy/draw.io import, themed exports. No install, no account, no server.",
+    "start_url": "./index.html",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#262a33",
+    "theme_color": "#262a33",
+    "icons": [
+        { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+        { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+        { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+    ],
+    "file_handlers": [
+        {
+            "action": "./index.html",
+            "accept": {
+                "application/json": [".xcanvas", ".netdraw"]
+            }
+        }
+    ]
+}

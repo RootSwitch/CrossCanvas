@@ -3659,6 +3659,10 @@
             'your custom stencils. Pasted images and stencils you imported are already in every save.</li>' +
             '<li><strong>Open / Import Diagram</strong> loads .xcanvas (and legacy .json); <strong>Open Recent</strong> ' +
             'lists the last diagrams. Autosave offers to restore on the next launch.</li>' +
+            '<li><strong>Installed as a desktop app</strong> (Edge/Chrome address-bar install icon, on a ' +
+            'trusted-HTTPS or localhost host): .xcanvas files associate with the app, so double-clicking one ' +
+            'opens it here - and Save then writes back to that same file (one permission prompt per session) ' +
+            'instead of opening the save dialog. Files opened any other way keep the dialog.</li>' +
             '</ul>' +
             '<h4>Importing diagrams</h4>' +
             '<p>File → Open / Import Diagram also accepts <strong>Gliffy</strong> (.gliffy), <strong>Visio</strong> ' +
@@ -9261,6 +9265,12 @@
         if (base) state.diagramTitle = base;
     }
 
+    // Set when the OS launched us with a file (installed-PWA .xcanvas
+    // association, manifest file_handlers): plain Save writes back to THIS
+    // file, desktop-convention, instead of opening the picker. Never set by
+    // File > Open or drag-drop - those keep the picker-every-save behavior.
+    let launchFileHandle = null;
+
     async function saveDiagram(embedImages) {
         // Build the JSON from current state at call time, so a filename the user
         // chooses in the Save dialog can be folded in before we write. Delegates
@@ -9278,7 +9288,19 @@
         const suggestedName = sanitizedTitle() + '.xcanvas';
 
         let handle = null;
-        if (window.showSaveFilePicker) {
+        // A file the OS handed us saves back in place. Self-Contained Copy
+        // still opens the picker - it is a COPY by name and by intent, and
+        // silently overwriting the working file with the embedded-stencil
+        // variant would bloat it on a menu click. The permission prompt
+        // (once per session) needs the user gesture the menu click provides.
+        if (!embedImages && launchFileHandle) {
+            try {
+                if (await launchFileHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+                    handle = launchFileHandle;
+                }
+            } catch (err) { /* denied or gone - the picker below takes over */ }
+        }
+        if (!handle && window.showSaveFilePicker) {
             try {
                 handle = await window.showSaveFilePicker({
                     suggestedName: suggestedName,
@@ -15956,6 +15978,28 @@
                 .catch(err => alert('Could not open board from URL: ' + err.message));
         } else {
             finishQuery();
+        }
+
+        // Installed-PWA file association (manifest file_handlers): a
+        // double-clicked .xcanvas arrives as a FileSystemFileHandle via the
+        // LaunchQueue. Routed through routeDiagramFile - the same door File >
+        // Open uses - and the handle is retained so Save writes back to the
+        // double-clicked file. The consumer can also fire into an ALREADY
+        // OPEN window (the OS may focus us instead of launching a second
+        // instance), so the same unsaved-work guard as File > Open applies.
+        if ('launchQueue' in window) {
+            window.launchQueue.setConsumer(async (params) => {
+                if (!params.files || !params.files.length) { return; }
+                if (state.dirty && !confirm('You have unsaved changes. Discard them and open the launched file?')) { return; }
+                const fh = params.files[0];
+                try {
+                    await routeDiagramFile(await fh.getFile(), false);
+                    launchFileHandle = fh;
+                    window.CrossCanvas.fitToView(50);
+                } catch (err) {
+                    alert('Could not open the launched file: ' + err.message);
+                }
+            });
         }
     }
 

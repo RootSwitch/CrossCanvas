@@ -255,6 +255,12 @@ See the PingCanvas and SNMPCanvas guides for the poller and metric-feed setup.
   lists the last diagrams you saved or opened, with a **Clear Recent** entry.
 - **Autosave** keeps your work in the browser and offers to restore it on the
   next launch.
+- **Installed as a desktop app** (Edge/Chrome address-bar install icon on a
+  trusted-HTTPS or localhost host): `.xcanvas` files associate with the app,
+  so double-clicking one opens it directly - and **Save then writes back to
+  that same file** (the browser asks permission once per session) instead of
+  opening the save dialog. Files opened any other way keep the normal
+  save-dialog behavior.
 
 ---
 
