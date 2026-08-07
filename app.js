@@ -3150,7 +3150,7 @@
     const toolbarActions = {
         'undo': () => undo(),
         'redo': () => redo(),
-        'copy': () => copySelection(),
+        'copy': () => { if (copySelection()) stampOsClipboard(); },
         'paste': () => pasteClipboard(),
         'delete': () => deleteSelected(),
         'arrange-front': () => arrangeSelected('front'),
@@ -3229,7 +3229,7 @@
         'export-drawio':      () => exportDrawio(),
         'undo': () => undo(),
         'redo': () => redo(),
-        'copy': () => copySelection(),
+        'copy': () => { if (copySelection()) stampOsClipboard(); },
         'paste': () => pasteClipboard(),
         'delete': () => deleteSelected(),
         'arrange-front': () => arrangeSelected('front'),
@@ -4374,7 +4374,7 @@
         items.push({ label: 'Redo', key: 'Ctrl+Y', disabled: redoStack.length === 0, action: () => redo() });
         items.push({ sep: true });
         if (anySel) {
-            items.push({ label: 'Copy', key: 'Ctrl+C', action: () => copySelection() });
+            items.push({ label: 'Copy', key: 'Ctrl+C', action: () => { if (copySelection()) stampOsClipboard(); } });
         }
         items.push({ label: 'Paste', key: 'Ctrl+V', disabled: !state.clipboard, action: () => pasteClipboard() });
         if (anySel) {
@@ -8368,10 +8368,27 @@
     }
 
     document.addEventListener('paste', (e) => {
+        // Seen BEFORE the guards: a paste that lands in an input must still
+        // cancel the keydown handler's internal-paste fallback timer, or
+        // typing Ctrl+V into a label field would also stamp objects onto the
+        // canvas 80ms later.
+        pasteEventSeen = true;
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
         if (state.inlineEditing && state.inlineEditing.element.contains(e.target)) return;
         const items = e.clipboardData?.items;
         if (!items) return;
+        // Recency routing: the marker means the newest thing copied was OUR
+        // objects (internal copies stamp it; any later external copy
+        // overwrites it) - so objects win. No marker + an image = the image
+        // is newer - it wins. Neither = fall through to the object clipboard,
+        // which keeps internal paste working when the stamp failed.
+        if (Array.from(e.clipboardData.types || []).includes(CLIPBOARD_MARKER)) {
+            if (state.clipboard) {
+                e.preventDefault();
+                pasteClipboard();
+                return;
+            }
+        }
         for (const item of items) {
             if (item.type.startsWith('image/')) {
                 e.preventDefault();
@@ -8418,6 +8435,12 @@
                 reader.readAsDataURL(blob);
                 return;
             }
+        }
+        // No image and no marker (external text, or a stamp that never took):
+        // the object clipboard is the only thing paste can mean here.
+        if (state.clipboard) {
+            e.preventDefault();
+            pasteClipboard();
         }
     });
 
@@ -8647,16 +8670,62 @@
             }
         }
 
-        // Copy: Ctrl+C
+        // Copy: Ctrl+C - and stamp the OS clipboard so paste can order the
+        // two clipboards by recency (see stampOsClipboard).
         if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-            if (copySelection()) e.preventDefault();
+            if (copySelection()) {
+                e.preventDefault();
+                stampOsClipboard();
+            }
         }
 
-        // Paste: Ctrl+V
+        // Paste: Ctrl+V. The routing lives in the 'paste' EVENT - the only
+        // place the OS clipboard is readable - so the keydown must NOT
+        // preventDefault (that suppressed the paste event, and with it image
+        // pasting, for the rest of the session after one internal copy). The
+        // timer is the fallback for the one case that fires no paste event at
+        // all: a completely empty OS clipboard, possible when the copy stamp
+        // failed. 80ms is far beyond the keydown->paste dispatch gap.
         if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-            if (state.clipboard) e.preventDefault();
-            pasteClipboard();
+            if (state.clipboard) {
+                pasteEventSeen = false;
+                setTimeout(() => { if (!pasteEventSeen) pasteClipboard(); }, 80);
+            }
         }
+    });
+
+    // --- OS-clipboard stamp: makes paste routing RECENCY-correct ------------
+    // The object clipboard (state.clipboard) and the OS clipboard are two
+    // stores with no shared ordering, so "which did the user copy LAST?" -
+    // the only paste rule that matches intent - is unanswerable unless every
+    // internal copy also writes the OS clipboard. Stamping a marker type (plus
+    // the copied labels as plain text, so pasting into a text editor gives
+    // something meaningful) means the OS clipboard's own last-writer-wins
+    // ordering becomes the arbiter: marker present = the internal copy is
+    // newest; an image present without it = the image is newest. Without this,
+    // one internal Ctrl+C suppressed image paste for the whole session - the
+    // keydown handler preventDefault()ed the paste event that image pasting
+    // lives on, and a fresh screenshot pasted the morning's stale device copy.
+    // execCommand is the one clipboard-write API that works on plain-HTTP
+    // deployments (navigator.clipboard needs a secure context); the stamp is
+    // best-effort - if it fails, paste falls back to the object clipboard
+    // whenever the OS clipboard offers no image, which is the old behavior.
+    const CLIPBOARD_MARKER = 'application/x-crosscanvas-objects';
+    let stampingCopy = false;
+    let pasteEventSeen = false;
+    function stampOsClipboard() {
+        stampingCopy = true;
+        try { document.execCommand('copy'); } catch (err) { /* best-effort */ }
+        stampingCopy = false;
+    }
+    document.addEventListener('copy', (e) => {
+        if (!stampingCopy || !state.clipboard || !e.clipboardData) return;
+        const labels = [...state.clipboard.devices, ...state.clipboard.zones,
+                        ...state.clipboard.textBoxes, ...(state.clipboard.images || [])]
+            .map(o => String(o.label || o.text || '').trim()).filter(Boolean).join('\n');
+        e.clipboardData.setData(CLIPBOARD_MARKER, '1');
+        if (labels) e.clipboardData.setData('text/plain', labels);
+        e.preventDefault();
     });
 
     function copySelection() {

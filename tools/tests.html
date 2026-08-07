@@ -304,8 +304,78 @@ async function run(t) {
   routingSuite(t);
   labelSlideSuite(t);
   connectIntentSuite(t);
+  await clipboardSuite(t);
   await corpusSuite(t);
   render();
+}
+
+// --- clipboard routing (recency marker) ----------------------------------
+// The object clipboard and the OS clipboard have no shared ordering, so paste
+// routes by a marker the app stamps into the OS clipboard on internal copy:
+// marker present -> objects are newest -> paste objects; image without the
+// marker -> the image is newest -> paste it (the bug this pins: one internal
+// Ctrl+C used to suppress the paste EVENT forever, so a fresh screenshot
+// pasted the morning's stale device); neither -> object-clipboard fallback.
+// Everything here goes through the REAL listeners via synthetic events.
+async function clipboardSuite(t) {
+  const MARKER = 'application/x-crosscanvas-objects';   // pinned: a rename must break this test
+  const frame = document.querySelector('iframe');
+  const idoc = frame.contentDocument, iwin = frame.contentWindow;
+  const counts = () => ({ d: t.state.devices.length, i: t.state.images.length });
+  const key = (k) => idoc.body.dispatchEvent(new iwin.KeyboardEvent('keydown',
+    { key: k, ctrlKey: true, bubbles: true, cancelable: true }));
+  const paste = (dt) => idoc.body.dispatchEvent(new iwin.ClipboardEvent('paste',
+    { clipboardData: dt, bubbles: true, cancelable: true }));
+  const AP = (w, h) => [{ rx: w/2, ry: 0 }, { rx: w, ry: 0 }, { rx: w, ry: h/2 }, { rx: w, ry: h },
+                        { rx: w/2, ry: h }, { rx: 0, ry: h }, { rx: 0, ry: h/2 }, { rx: 0, ry: 0 }];
+  const dev = (i) => ({
+    id: 'cb' + i, templateId: 'cb' + i + 't', image: '@Server', originalImage: '@Server',
+    x: 80 + i * 150, y: 80, w: 60, h: 60, label: 'clip-' + i, labelPosition: 'bottom',
+    fontSize: 14, fontColor: '#333333', lineFormats: [{ bold: false, italic: false }],
+    spans: [[{ text: 'clip-' + i, bold: false, italic: false }]], tintColor: null,
+    attachmentPoints: AP(60, 60), fields: {}
+  });
+  t.applyDiagramData({ version: 6, appVersion: 'cctest', diagramTitle: 'clip-test', diagramVersion: 1,
+    devices: [dev(0), dev(1)], connections: [], zones: [], textBoxes: [], images: [], groups: [],
+    deviceTemplates: [], imageTable: {}, nextId: 900 });
+  key('a'); key('c');                     // select all -> internal copy (real handlers)
+  const r = {};
+  r.base = counts();
+
+  let dt = new iwin.DataTransfer();       // 1. marker -> objects win
+  dt.setData(MARKER, '1');
+  paste(dt);
+  r.marker = counts();
+
+  dt = new iwin.DataTransfer();           // 2. image, no marker -> IMAGE wins (the bug)
+  const png = Uint8Array.from(atob(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
+    c => c.charCodeAt(0));
+  dt.items.add(new iwin.File([png], 'clip.png', { type: 'image/png' }));
+  paste(dt);
+  // FileReader + Image decode are async, and the hidden test iframe
+  // deprioritizes decode - poll for the image instead of guessing a delay.
+  for (let w = 0; w < 40 && counts().i === 0; w++) { await new Promise(res => setTimeout(res, 100)); }
+  r.image = counts();
+
+  dt = new iwin.DataTransfer();           // 3. neither -> object fallback
+  dt.setData('text/plain', 'external text');
+  paste(dt);
+  r.text = counts();
+
+  key('v');                               // 4. Ctrl+V, NO paste event at all -> timer fallback
+  await new Promise(res => setTimeout(res, 180));
+  r.timer = counts();
+
+  suite('Clipboard routing (recency marker)', () => {
+    ok('setup: two devices copied internally', r.base.d === 2 && r.base.i === 0, JSON.stringify(r.base));
+    ok('marker in OS clipboard -> objects paste', r.marker.d === 4 && r.marker.i === 0, JSON.stringify(r.marker));
+    ok('image without marker -> the IMAGE pastes, not the stale copy',
+      r.image.i === 1 && r.image.d === 4, JSON.stringify(r.image));
+    ok('no image, no marker -> object-clipboard fallback', r.text.d === 6 && r.text.i === 1, JSON.stringify(r.text));
+    ok('Ctrl+V with no paste event -> timer fallback still pastes objects',
+      r.timer.d === 8 && r.timer.i === 1, JSON.stringify(r.timer));
+  });
 }
 
 // --- routing invariant ---------------------------------------------------
