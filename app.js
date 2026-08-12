@@ -45,7 +45,7 @@
     // touch and fine layout needs less Alt. Alt = half of this (5px).
     const GRID_SIZE = 10;
     const VISIBLE_GRID = 20;       // drawn grid spacing (canvas pattern + raster exports)
-    const APP_VERSION = '4.0.0';   // stamped into saved files; bump on release
+    const APP_VERSION = '4.1.0';   // stamped into saved files; bump on release
     let DEVICE_SIZE = 60;
     let DEFAULT_FONT_SIZE = 16;
     let DEFAULT_FONT_FAMILY = '';      // FONT_STACKS key; '' = default face
