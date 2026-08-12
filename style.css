@@ -1615,6 +1615,41 @@ body.dark-mode #canvas-find-count {
     color: var(--se-dk-txt-dim, var(--se-txt-dim));
 }
 
+/* Minimap: whole-board overview, bottom-right over the canvas. Background
+   matches the canvas surface so the mirrored content reads true. */
+#minimap {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    width: 208px;
+    height: 144px;
+    z-index: 900;
+    background: #ffffff;
+    border: 1px solid var(--se-border);
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    cursor: pointer;
+}
+body.right-pane-open #minimap {
+    right: 276px;
+}
+#minimap svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+#minimap-view {
+    fill: rgba(45, 103, 185, 0.12);
+    stroke: #2d67b9;
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+}
+body.dark-mode #minimap {
+    background: var(--se-canvas-dark);
+    border-color: var(--se-dk-border, var(--se-border));
+}
+
 /* Icon-filter inputs above the icon-swap selects */
 .icon-filter {
     width: 100%;

@@ -438,6 +438,9 @@
         // as its body; devices/images have no zl- element and skip the branch.
         const lbl = document.getElementById('zl-' + node.id);
         if (lbl) lbl.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+        // The minimap CONTENT mirrors this move by itself (<use>); only the
+        // frame might need to grow when a drag pushes past the bounds.
+        scheduleMinimap();
     }
 
     // Marquee fast path: rubber-banding only changes selection membership, so
@@ -500,6 +503,7 @@
         canvas.setAttribute('preserveAspectRatio', 'xMinYMin meet');
         canvas.style.width = (needW * z) + 'px';
         canvas.style.height = (needH * z) + 'px';
+        scheduleMinimap();   // zoom or content growth changes the frame
     }
 
     function updateZoomLabel() {
@@ -3584,6 +3588,86 @@
         renderAllConnections();
         setDirty(true);
     });
+
+    // --- Minimap -----------------------------------------------------------
+    // A live mirror, not a copy: the minimap svg <use>-references the object
+    // layers, so the browser keeps its content current for free - the app
+    // only maintains the FRAME. The frame is the union of content bounds and
+    // the current viewport (plus padding), so scrolling far away zooms the
+    // map out to keep both visible - the view can never get lost. An editor
+    // preference like grid/guides (localStorage), NOT board state: it changes
+    // what you see around the board, never the board.
+    const minimapEl = document.getElementById('minimap');
+    const minimapSvg = document.getElementById('minimap-svg');
+    const minimapView = document.getElementById('minimap-view');
+    // var, not let: scheduleMinimap is hoisted and render paths call it
+    // during boot, before this block executes - undefined must read as
+    // "off", not throw.
+    var minimapOn = false;
+    var minimapRaf = null;
+
+    function minimapFrame() {
+        const container = document.getElementById('canvas-container');
+        const z = state.zoom;
+        const view = { x: container.scrollLeft / z, y: container.scrollTop / z,
+                       w: container.clientWidth / z, h: container.clientHeight / z };
+        const b = getContentBounds();
+        let x1 = view.x, y1 = view.y, x2 = view.x + view.w, y2 = view.y + view.h;
+        if (b) {
+            x1 = Math.min(x1, b.minX); y1 = Math.min(y1, b.minY);
+            x2 = Math.max(x2, b.maxX); y2 = Math.max(y2, b.maxY);
+        }
+        const pad = Math.max(20, (x2 - x1) * 0.03);
+        minimapSvg.setAttribute('viewBox',
+            `${x1 - pad} ${y1 - pad} ${(x2 - x1) + pad * 2} ${(y2 - y1) + pad * 2}`);
+        minimapView.setAttribute('x', view.x);
+        minimapView.setAttribute('y', view.y);
+        minimapView.setAttribute('width', view.w);
+        minimapView.setAttribute('height', view.h);
+    }
+
+    function scheduleMinimap() {
+        if (!minimapOn || minimapRaf) return;
+        minimapRaf = requestAnimationFrame(() => { minimapRaf = null; if (minimapOn) minimapFrame(); });
+    }
+
+    function applyMinimap(on) {
+        minimapOn = on;
+        minimapEl.style.display = on ? 'block' : 'none';
+        document.getElementById('btn-minimap').classList.toggle('active', on);
+        try { localStorage.setItem('crosscanvas-minimap', on ? '1' : '0'); } catch (e) { /* ignore */ }
+        if (on) minimapFrame();
+    }
+    document.getElementById('btn-minimap').addEventListener('click', () =>
+        applyMinimap(minimapEl.style.display === 'none'));
+    // Restore the preference - but never in EMBED/kiosk, where there is no
+    // toolbar to turn it back off.
+    try {
+        if (!EMBED && localStorage.getItem('crosscanvas-minimap') === '1') applyMinimap(true);
+    } catch (e) { /* ignore */ }
+
+    // Click or drag anywhere on the map to move the view there. getScreenCTM
+    // handles the viewBox letterboxing, so the math is one matrix transform.
+    function minimapJump(e) {
+        const ctm = minimapSvg.getScreenCTM();
+        if (!ctm) return;
+        const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+        const container = document.getElementById('canvas-container');
+        container.scrollLeft = p.x * state.zoom - container.clientWidth / 2;
+        container.scrollTop = p.y * state.zoom - container.clientHeight / 2;
+    }
+    minimapEl.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        minimapJump(e);
+        // Capture keeps a drag panning when the cursor leaves the map. It may
+        // throw for pointers that are not active (untrusted/synthetic events)
+        // - the click above has already landed by then.
+        try { minimapEl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    });
+    minimapEl.addEventListener('pointermove', (e) => {
+        if (e.buttons & 1) minimapJump(e);
+    });
+    document.getElementById('canvas-container').addEventListener('scroll', scheduleMinimap);
 
     // --- Toolbar quick-action buttons (mirror Edit menu) ---
     const toolbarActions = {

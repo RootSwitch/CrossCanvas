@@ -231,6 +231,9 @@
             <button id="btn-jumps" class="tool-btn" title="Line Jumps - hop connections over each other where they cross. Saved with the board; leave off for diagrams with deliberately layered connections">
                 <svg width="20" height="20" viewBox="0 0 20 20"><line x1="10" y1="3" x2="10" y2="17" stroke="currentColor" stroke-width="1.5"/><path d="M2 12 H6.5 A3.5 3.5 0 0 1 13.5 12 H18" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
             </button>
+            <button id="btn-minimap" class="tool-btn" title="Minimap - overview of the whole board, bottom-right. Click or drag it to move the view; handy on large or stitched diagrams">
+                <svg width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="3" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="10.5" y="9.5" width="5" height="4.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="7" r="1.4" fill="currentColor"/><circle cx="12" cy="6.5" r="1.4" fill="currentColor"/><circle cx="6.5" cy="12.5" r="1.4" fill="currentColor"/></svg>
+            </button>
         </div>
 
         <div id="sidebar">
@@ -974,6 +977,21 @@
                 <g id="zone-labels-layer"></g>
                 <g id="devices-layer"></g>
                 <g id="overlay-layer"></g>
+            </svg>
+        </div>
+
+        <!-- Minimap: live mirror of the object layers via same-document
+             <use> refs - the browser keeps it current, no second render.
+             Framed by app.js (viewBox = content bounds UNION viewport, so
+             the view can never scroll itself lost). Hidden by default. -->
+        <div id="minimap" style="display:none">
+            <svg id="minimap-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                <use href="#zones-layer"/>
+                <use href="#images-layer"/>
+                <use href="#connections-layer"/>
+                <use href="#zone-labels-layer"/>
+                <use href="#devices-layer"/>
+                <rect id="minimap-view"/>
             </svg>
         </div>
 

@@ -305,6 +305,7 @@ async function run(t) {
   obstacleSuite(t);
   lineJumpSuite(t);
   labelHaloSuite(t);
+  minimapSuite(t);
   labelSlideSuite(t);
   connectIntentSuite(t);
   await clipboardSuite(t);
@@ -621,6 +622,66 @@ function labelHaloSuite(t) {
     } else {
       skip('clicking the hoisted title selects its zone', 'no title element');
     }
+  });
+}
+
+// --- minimap ---------------------------------------------------------------
+// Editor preference (localStorage, like grid/guides - never board state).
+// The minimap CONTENT is a live <use> mirror of the object layers; the app
+// maintains only the FRAME: viewBox = content bounds UNION viewport + pad,
+// so scrolling far away zooms the map out rather than losing the view.
+function minimapSuite(t) {
+  const idoc = document.querySelector('iframe').contentDocument;
+  const iwin = document.querySelector('iframe').contentWindow;
+  const mm = () => idoc.getElementById('minimap');
+  const btn = () => idoc.getElementById('btn-minimap');
+
+  suite('Minimap', () => {
+    // The harness iframe shares the origin's localStorage with real usage,
+    // so the preference may be ON from a live session - normalize first.
+    if (mm().style.display !== 'none') btn().click();
+    ok('normalized off: hidden, inactive, stored "0"',
+      mm().style.display === 'none' && !btn().classList.contains('active') &&
+      iwin.localStorage.getItem('crosscanvas-minimap') === '0');
+    ok('mirrors all five object layers via <use>',
+      idoc.querySelectorAll('#minimap-svg use').length === 5);
+
+    // A device far out at (2000, 1500): the frame must span it. Fixture
+    // first, THEN toggle on - applyMinimap frames synchronously.
+    t.applyDiagramData({ version:6, diagramTitle:'mm', diagramVersion:1,
+      devices:[{ id:'far', x:2000, y:1500, w:60, h:60, label:'Far', labelPosition:'bottom',
+        fontSize:14, fontColor:'#333333', tintColor:null,
+        spans:[[{text:'Far',bold:false,italic:false}]], lineFormats:[{bold:false,italic:false}],
+        attachmentPoints:[{rx:30,ry:0},{rx:60,ry:0},{rx:60,ry:30},{rx:60,ry:60},{rx:30,ry:60},{rx:0,ry:60},{rx:0,ry:30},{rx:0,ry:0}], fields:{} }],
+      connections:[], zones:[], textBoxes:[], images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:9 });
+    btn().click();
+    ok('button shows it and marks itself active',
+      mm().style.display === 'block' && btn().classList.contains('active'));
+    ok('preference persists', iwin.localStorage.getItem('crosscanvas-minimap') === '1');
+    const vb = (idoc.getElementById('minimap-svg').getAttribute('viewBox') || '').split(' ').map(Number);
+    ok('frame spans distant content (bounds union viewport)',
+      vb.length === 4 && vb[0] + vb[2] >= 2060 && vb[1] + vb[3] >= 1560,
+      'viewBox=' + vb.join(' '));
+    const v = idoc.getElementById('minimap-view');
+    ok('viewport rectangle is drawn', v && v.getAttribute('width') !== null);
+
+    // Click-to-jump needs real layout (rects, scroll ranges) - the hidden
+    // harness iframe has none, so this only runs when geometry exists.
+    // Live-verified 2026-08-11: jump clamps to max scroll, drag pans back.
+    const container = idoc.getElementById('canvas-container');
+    const maxScroll = container.scrollWidth - container.clientWidth;
+    if (container.clientWidth > 0 && maxScroll > 0) {
+      const box = mm().getBoundingClientRect();
+      mm().dispatchEvent(new iwin.PointerEvent('pointerdown', { bubbles:true, cancelable:true,
+        pointerId: 7, clientX: box.right - 8, clientY: box.bottom - 8, buttons: 1 }));
+      ok('clicking the far corner of the map jumps the view', container.scrollLeft > 0,
+        'scrollLeft=' + container.scrollLeft + ' max=' + maxScroll);
+    } else {
+      skip('clicking the map jumps the view', 'harness iframe has no layout to scroll');
+    }
+    btn().click();
+    ok('toggles back off', mm().style.display === 'none' &&
+      iwin.localStorage.getItem('crosscanvas-minimap') === '0');
   });
 }
 
