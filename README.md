@@ -37,15 +37,23 @@ full change history, see `CHANGELOG.md`; for design rationale, `NOTES.md`.
 - **Inventory import** - turn client & device inventory exports (Cisco
   Catalyst Center, ISE, NetBox, DNS/DHCP, `arp -a`) into a laid-out starting
   diagram, grouped into zones by location.
-- **Smart connections** - straight, rounded, or orthogonal routing; draggable
-  bends and waypoints; arrowheads, dash styles, labels, and inline annotations;
-  endpoints that stay glued to devices as you move them.
+- **Smart connections** - straight, rounded, or orthogonal routing that steps
+  around devices in its way (hand-shaped routes are never second-guessed);
+  line jumps where connections cross, at any angle; pinned or floating
+  endpoints (floating ends re-land on the facing side as devices move);
+  draggable bends and waypoints; arrowheads, dash styles, labels, and inline
+  annotations. Imported hand-routed paths convert to native routes wherever
+  the drawn shape is exactly reproducible, so they follow device moves too.
 - **Rich text** - multi-line labels with per-character bold, italic, and color;
   curated font families; full horizontal/vertical alignment.
 - **30 color themes + dark mode** - recolor the whole app chrome and the default
   object palette in a click; dark mode is surface-aware so labels stay legible.
   Alongside the **Classic** default is a spread of themes including a material
-  family inspired by the canvas name (Canvas, Blueprint, Ink, Gesso).
+  family inspired by the canvas name (Canvas, Blueprint, Ink, Gesso). Recolor
+  All to Theme keeps meaningful colors - legend reds survive, grey ink follows.
+- **Readable by default** - labels halo themselves in their background color so
+  text stays legible over crossing lines, and a live minimap keeps your place
+  on big boards (click or drag it to move the view).
 - **Per-device data fields** - attach Hostname, IP, Serial, Asset Tag, and more
   to any device; they travel with the file and export to CSV.
 - **Built-in Help** - a Quick Start, the full User Guide, a keyboard-shortcut

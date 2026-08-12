@@ -4308,7 +4308,11 @@
             '<li><strong>Menu bar</strong> - File, Export, Edit, Layers, Align, Bulk Actions, Help, ' +
             'plus the theme picker and dark-mode toggle on the right.</li>' +
             '<li><strong>Toolbar</strong> - select, connect, text, pan, zoom, undo/redo, copy/paste, ' +
-            'delete, arrange (z-order), grid and snap toggles.</li>' +
+            'delete, arrange (z-order), grid and snap toggles, <strong>Line Jumps</strong> (saved ' +
+            'with the board) and the <strong>Minimap</strong>.</li>' +
+            '<li><strong>Minimap</strong> (bottom-right, on by default) - a live overview of the whole ' +
+            'board that always keeps your viewport in frame. Click or drag on it to move the view; ' +
+            'toggle it from the toolbar.</li>' +
             '<li><strong>Left sidebar</strong> - collapsible sections: Default Settings, ' +
             'Zones / Text, Devices (palette + search), and Device Library (import/export).</li>' +
             '<li><strong>Properties panel</strong> - appears when an object is selected; dock it ' +
@@ -4350,7 +4354,17 @@
             'an object grabs and moves it instead of drawing from a hard-to-predict edge.</li>' +
             '<li><strong>Ctrl (Cmd) + drag in Connect mode always moves an object</strong>, even ' +
             'starting on an attachment point - for repositioning without switching back to Select.</li>' +
-            '<li><strong>Routing</strong> - Straight, Rounded, or Orthogonal per connection.</li>' +
+            '<li><strong>Routing</strong> - Straight, Rounded, or Orthogonal per connection. Auto-routes ' +
+            'step around devices that sit in their way; a route you have shaped by hand is never ' +
+            'second-guessed. <strong>Route Clearance</strong> (Default Settings, saved with the ' +
+            'board) sets how much room those detours keep.</li>' +
+            '<li><strong>Pinned vs. floating ends</strong> - drop on an attachment dot to pin to that ' +
+            'exact point; drop on the device body and the end stays with the device while the router ' +
+            'picks the facing side every time something moves (its endpoint handle draws hollow).</li>' +
+            '<li><strong>Line Jumps</strong> (toolbar, saved with the board, on for new boards) - ' +
+            'where connections cross, the one on top hops the other with a small arc, at any angle. ' +
+            'A cable ending ON another line is a junction and never hops; boards drawn before the ' +
+            'feature stay exactly as drawn until you opt them in.</li>' +
             '<li><strong>Reshape</strong> - selected connections show bend handles (auto-routed) or ' +
             'waypoint handles (imported routes). A bend dropped on its natural line removes itself.</li>' +
             '<li><strong>Style</strong> - color, thickness, dash pattern, and independent start/end ' +
@@ -4392,13 +4406,18 @@
             'inventory is built in the active theme; imported diagrams keep their source styling.</li>' +
             '<li><strong>Recolor to Theme</strong> (Bulk Actions) retroactively snaps objects to the ' +
             'current theme - a popup picks which kinds (devices, zones, connections, text boxes), so ' +
-            'you can keep, say, link-speed color coding or hand-tuned zones. Undoable, handy after an ' +
-            'import.</li>' +
+            'you can keep, say, link-speed color coding or hand-tuned zones - and <strong>Keep meaningful ' +
+            'colors</strong> (on by default) preserves colored lines and text (legends) individually ' +
+            'while grey defaults follow the theme. Undoable, handy after an import.</li>' +
             '<li><strong>Map Details to Label</strong> (Bulk Actions) stacks chosen Device Details ' +
             '(Hostname + IP by default) into every device label, one per line - undoable.</li>' +
             '<li><strong>Map Label to Details</strong> (Bulk Actions) does the reverse: pulls an ' +
             'IPv4 address out of each device label into its IP-Address field - a quick way to ready ' +
             'an existing diagram for monitoring. Undoable; skips devices that already have an IP.</li>' +
+            '<li><strong>Label halos</strong> - labels stroke a thin outline in their background color, so ' +
+            'text stays readable where connections pass behind it (invisible everywhere else). ' +
+            '<strong>Label Halos</strong> in Default Settings scopes it per board: all labels, ' +
+            'devices &amp; text only (map and floorplan boards), or off.</li>' +
             '<li><strong>Dark mode</strong> is surface-aware: labels and lines flip to stay legible.</li>' +
             '</ul>' +
             '<h4>Saving &amp; opening</h4>' +
@@ -4422,6 +4441,9 @@
             'arrowheads are imported, and embedded images come across as pasted images. Multi-page files ' +
             'prompt for a page. Unrecognized icons import as Blank and are listed in the summary - ' +
             'swap them afterwards with the Icon dropdown (its filter finds the right stencil fast). ' +
+            'Hand-routed connector paths convert to native routes wherever the drawn shape can be ' +
+            'reproduced exactly, so they keep their shape AND follow devices when you move them; ' +
+            'routes too intricate to express stay as drawn with waypoint handles. ' +
             'CrossCanvas’s own draw.io exports round-trip: device icons and Device Details come back intact. ' +
             'Your own stencils outrank the bundled set: if a Device Library import’s name matches a ' +
             'shape (an imported “Cisco Switch” icon vs. incoming switch shapes), imports use yours.</p>' +

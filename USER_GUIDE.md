@@ -32,7 +32,13 @@ diagram.
 - **Menu bar** (top) - File, Export, Edit, Layers, Align, Bulk Actions, Help, plus
   the theme picker and dark-mode toggle on the right.
 - **Toolbar** - select, connect, text, pan, zoom, undo/redo, copy/paste,
-  delete, arrange (z-order), grid and snap toggles.
+  delete, arrange (z-order), grid and snap toggles, **Line Jumps** (a board
+  setting - see Connections), and the **Minimap** toggle.
+- **Minimap** (bottom-right, on by default) - a live overview of the whole
+  board that always keeps your viewport rectangle in frame, however far you
+  scroll. Click anywhere on it to center the view there, or hold and drag to
+  pan continuously. An editor preference, like the grid - it never affects
+  the board itself.
 - **Left sidebar** - collapsible sections: **Default Settings**, **Zones /
   Text** (background shapes + the text-box tool), **Devices** (the stencil
   palette + search), and **Device Library** (import/export tools).
@@ -116,6 +122,18 @@ behind devices, so devices placed inside a zone stay on top.
   to move even when starting on a dot. Drop on empty canvas to leave a
   free-floating endpoint.
 - **Routing** - choose Straight, Rounded, or Orthogonal per connection.
+  Auto-routes step around devices that sit in their way; a route you have
+  shaped by hand is never second-guessed. **Route Clearance** in Default
+  Settings (saved with the board) sets how much room those detours keep.
+- **Pinned vs. floating endpoints** - drop on an attachment dot to pin the
+  connection to that exact point, or drop on the device body to let it float:
+  a floating end stays with the device and re-lands on the side facing the
+  other end whenever anything moves. Floating endpoint handles draw hollow.
+- **Line jumps** - where connections cross, the one on top hops the other
+  with a small arc, at any crossing angle. Toggle on the toolbar, saved with
+  the board; new boards start with jumps on, and boards saved before the
+  feature keep their exact drawn look until you opt them in. A cable that
+  ends ON another line is a junction (a tap), and never hops.
 - **Reshape** - selected connections show drag handles: **bend handles** on
   auto-routed segments, or **waypoint handles** on imported hand-routed paths.
   Drag them to reroute; a bend dropped back on its natural line removes itself.
@@ -129,7 +147,11 @@ behind devices, so devices placed inside a zone stay on top.
   off a busy crossing. Drop it back near the middle to re-centre it.
 
 Adjust a device's **Attachment Points** count in its properties to control how
-many connection anchor points it offers.
+many connection anchor points it offers. The slider's ceiling scales with the
+object's size - a standard device offers up to 16, while large zones and
+images unlock up to 64 for granular landings (a patch panel's worth of ports
+on one edge). Shrinking an object never deletes its points; the slider just
+stops offering counts the new size cannot hold legibly.
 
 ---
 
@@ -209,7 +231,13 @@ See the PingCanvas and SNMPCanvas guides for the poller and metric-feed setup.
 - **Default Settings** (top of the sidebar) sets the colors new objects get:
   font, **Device Color**, **Device Background**, **Zone Color**, **Zone Border
   Color**, and default attachment-point count. Each has a **Reset** that
-  restores the active theme's value.
+  restores the active theme's value. Two board-level routing controls live
+  here too (both saved with the board, so the kiosk draws what you chose):
+  **Route Clearance** - how much room auto-routes keep when stepping around a
+  device - and **Label Halos** - whether labels outline themselves in their
+  background color for legibility over crossing lines (all labels, devices
+  and text only, or off; "devices and text only" suits map or floorplan
+  boards where zone titles should sit directly on the artwork).
 - **Themes** - the picker by the dark-mode toggle offers 30 looks, grouped
   (Paper, Warm, Cool, Night, Screen). **Classic** - the untinted original - is
   the default; beside it sit a material family inspired by the canvas name -
@@ -225,7 +253,10 @@ See the PingCanvas and SNMPCanvas guides for the poller and metric-feed setup.
   post-import recolor. (Imported *diagrams* still keep their source styling.)
 - **Recolor All to Theme** (Bulk Actions menu) retroactively snaps every existing
   device and zone to the current theme's colors - handy after an import. It's
-  undoable.
+  undoable. **Keep meaningful colors** (checked by default) preserves chromatic
+  connection colors and label inks individually - the red 10Gb uplink in your
+  legend survives while grey default ink follows the theme; uncheck it to snap
+  absolutely everything.
 - **Map Details to Label** (Bulk Actions menu) stacks chosen Device Details into
   every device's label, one field per line - Hostname + IP-Address by default.
   Handy after an inventory import to surface the IP on the canvas. Undoable.

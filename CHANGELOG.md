@@ -3,6 +3,31 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**v4.1.0** (tagged August 2026) is the readability-and-routing arc, born from
+studying how each new AI model generation attacks the same "build a network
+diagram editor" prompt and adopting the mechanisms that fit - then testing
+against real boards. **Connections got smarter without getting louder**:
+auto-routes now step around devices that sit in their way (candidate scoring,
+not pathfinding - hand-shaped routes are never second-guessed, and a tunable
+**Route Clearance** travels with the board); **line jumps** hop the top
+connection over crossings at any angle (a board setting, on for new boards,
+never retrofitted onto boards saved before it - taps that end ON a line stay
+junctions); and endpoints can now **float**: drop a connection on a device
+body and it re-lands on the facing side whenever anything moves, while
+attachment-dot drops stay pinned exactly as before. **Text got legible
+everywhere**: every label strokes a halo in its background color, so lines
+passing behind text cut around the glyphs (scoped per board - all labels,
+devices & text only, or off), and zone titles now paint above connections.
+**Navigation and capacity**: a live **minimap** (on by default) that can
+never lose your viewport, and attachment-point counts that scale with object
+size - up to 64 on large zones and images for patch-panel-grade landings.
+**Imports got more native**: hand-routed Gliffy/draw.io connector paths
+convert to real routed connections wherever the drawn shape is exactly
+reproducible (verified per connection by a dry-run through the router), so
+they keep their shape and follow device moves; **Recolor to Theme** learned
+to keep meaningful colors - legend reds survive while grey default ink
+follows the theme. Under it all, 100+ new harness checks (230 total).
+
 **v4.0.0** (tagged July 2026) is the public-debut arc: the project becomes
 **CrossCanvas** (and its monitoring sibling **PingCanvas**), with the
 `.xcanvas` extension and permanent legacy support - `.netdraw` files open

@@ -137,6 +137,14 @@ valid file:
 }
 ```
 
+Optional board-level fields (omit them for the defaults): `"lineJumps": true`
+draws a small hop where connections cross (new boards made in the app have
+it on; a file without the field renders without hops), `"routeClearance"`
+(pixels, default 6) sets how much room auto-routes keep when stepping around
+a device, and `"labelHalos"` (`"all"` default, `"devices"`, or `"off"`)
+scopes the label-legibility halos. All three travel with the file so the
+kiosk renders what the author chose.
+
 ### Object reference
 
 **Device** - `x`/`y` is the icon's top-left corner; standard size is
@@ -156,7 +164,13 @@ top-left, coordinates relative to the icon). Index map, used by connections:
 
 **Connection** - `fromDevice`/`toDevice` are device ids; `fromAP`/`toAP` are
 attachment-point indices (downlinks: bottom of the upper device, `5`, to top
-of the lower device, `1`). `routing`: `straight | orthogonal | rounded`
+of the lower device, `1`). **Or skip the AP math entirely**: add
+`"fromFloating": true` / `"toFloating": true` and the router picks the
+facing side itself, re-picking whenever devices move - still set `fromAP`/
+`toAP` to any valid index as the fallback for older builds. Floating
+endpoints are the recommended authoring shape for generated diagrams: the
+app also routes around devices on its own, so an agent only decides WHAT
+connects to what. `routing`: `straight | orthogonal | rounded`
 (rounded = orthogonal with soft corners; use it as the default). `dash`:
 `solid | dash-sm | dash-md | dash-lg | dash-dot | dot`. `startArrow`/`endArrow`:
 `none | arrow | open-arrow | circle | diamond`. `annotations` is a list of
