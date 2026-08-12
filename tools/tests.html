@@ -309,6 +309,7 @@ async function run(t) {
   apCapSuite(t);
   floatingEndpointSuite(t);
   recolorKeepSuite(t);
+  waypointConvertSuite(t);
   labelSlideSuite(t);
   connectIntentSuite(t);
   await clipboardSuite(t);
@@ -1026,6 +1027,112 @@ function recolorKeepSuite(t) {
       t.state.connections[1].color === themeConn, t.state.connections[1].color);
     ok('keepMeaningful: false snaps the chromatic label too',
       t.state.devices[1].fontColor === themeFont);
+  });
+}
+
+// --- imported waypoints -> native bends ------------------------------------
+// Importers try to express each hand-routed waypoint path as bends on the
+// native skeleton, so imported connections keep their drawn shape AND
+// reroute when devices move. Conversion is gated by an exact dry-run
+// through the real router: anything not reproduced to the pixel keeps its
+// waypoints. Shapes with FEWER corners than the template now convert too
+// (collapsed template legs render no handles); more corners than the
+// template can hold never convert.
+function waypointConvertSuite(t) {
+  const idoc = document.querySelector('iframe').contentDocument;
+  const AP = (w,h) => [{rx:w/2,ry:0},{rx:w,ry:0},{rx:w,ry:h/2},{rx:w,ry:h},{rx:w/2,ry:h},{rx:0,ry:h},{rx:0,ry:h/2},{rx:0,ry:0}];
+  const box = (id,x,y) => ({ id, x, y, w:60, h:60, label:id, labelPosition:'bottom', fontSize:14,
+    fontColor:'#333333', tintColor:null, spans:[[{text:id,bold:false,italic:false}]],
+    lineFormats:[{bold:false,italic:false}], attachmentPoints:AP(60,60), fields:{} });
+  const wpConn = (wps) => ({ id:'wc', fromDevice:'a', fromAP:2, toDevice:'b', toAP:6,
+    routing:'rounded', waypoints:wps, color:'#333', thickness:2, dash:'solid', label:'',
+    labelPosition:'top', labelVAlign:'top', fontSize:14, fontColor:'#333', lineFormats:[],
+    spans:[], startArrow:'none', endArrow:'none', annotations:[] });
+  const load = (bx, by, wps, extraDevs) => t.applyDiagramData({ version:6,
+    diagramTitle:'wp', diagramVersion:1,
+    devices:[box('a',100,200), box('b',bx,by)].concat(extraDevs||[]),
+    connections:[wpConn(wps)], zones:[], textBoxes:[], images:[], groups:[],
+    deviceTemplates:[], imageTable:{}, nextId:9 });
+  const route = c => { const s=t.resolveConnEndpoint(c,'from'), e=t.resolveConnEndpoint(c,'to');
+    return t.connRoutePoints(c, s, e); };
+
+  // Geometry-level normalize for comparisons: drop duplicate points and
+  // merge collinear runs, so a 4-point waypoint route and a 6-point bent
+  // route that draw the same line compare equal.
+  const geom = pts => {
+    const out = [];
+    for (const p of pts) {
+      const l = out[out.length-1];
+      if (l && Math.abs(l.x-p.x) < 0.75 && Math.abs(l.y-p.y) < 0.75) continue;
+      out.push(p);
+    }
+    for (let i = out.length-2; i >= 1; i--) {
+      const a = out[i-1], b = out[i], c = out[i+1];
+      if ((Math.abs(a.x-b.x)<0.75 && Math.abs(b.x-c.x)<0.75) ||
+          (Math.abs(a.y-b.y)<0.75 && Math.abs(b.y-c.y)<0.75)) out.splice(i,1);
+    }
+    return JSON.stringify(out.map(p=>[Math.round(p.x),Math.round(p.y)]));
+  };
+
+  suite('Imported waypoints -> native bends', () => {
+    // FEWER corners than the template (the S400 -> QSW class): a 2-corner
+    // detour on a 5-segment skeleton. Converts, draws identically, and the
+    // connection becomes native - it follows device moves.
+    load(500, 400, [{x:350,y:230},{x:350,y:430}]);
+    const c1 = t.state.connections[0];
+    const before = geom(route(c1));
+    ok('a fewer-corner shape converts', t.convertWaypointsToBends(c1) === true && !c1.waypoints,
+      'wps=' + JSON.stringify(c1.waypoints) + ' bends=' + JSON.stringify(c1.bends));
+    ok('the drawn shape is pixel-identical after conversion', geom(route(c1)) === before,
+      before + ' -> ' + geom(route(c1)));
+    const b = t.state.devices.find(d => d.id === 'b');
+    b.x += 60;
+    const moved = route(c1);
+    ok('the converted connection follows a device move',
+      Math.round(moved[moved.length-1].x) === Math.round(b.x),
+      moved[moved.length-1].x + ' vs device at ' + b.x);
+
+    // MORE corners than the template: a 6-corner snake keeps its waypoints
+    // untouched - the honest representation when bends cannot express it.
+    load(500, 400, [{x:200,y:230},{x:200,y:300},{x:300,y:300},{x:300,y:150},{x:430,y:150},{x:430,y:430}]);
+    const c2 = t.state.connections[0];
+    const before2 = geom(route(c2));
+    ok('a more-corner shape refuses and keeps waypoints',
+      t.convertWaypointsToBends(c2) === false && !!c2.waypoints && !c2.bends);
+    ok('the refused shape is untouched', geom(route(c2)) === before2);
+
+    // SCORED skeleton (the latent-bug fix): a blocker forces the dodge, and
+    // an imported shape matching the dodge converts. Under the old code the
+    // fit used the scored skeleton while the dry-run replayed the classic
+    // one, so exactly this case silently failed and kept waypoints.
+    load(600, 200, [{x:190,y:230},{x:190,y:190},{x:570,y:190},{x:570,y:230}],
+      [box('blk',320,200)]);
+    const c3 = t.state.connections[0];
+    ok('a shape matching the obstacle-dodged skeleton converts',
+      t.convertWaypointsToBends(c3) === true && !c3.waypoints,
+      JSON.stringify({ wps: !!c3.waypoints, bends: c3.bends }));
+
+    // Fix A: a template leg collapsed by bends renders NO handle - counted
+    // through the real selection chrome. Selection is set directly and the
+    // re-render driven through recolorAllToTheme's unconditional
+    // renderAllConnections, which is deterministic in the harness.
+    load(500, 400, null);
+    const c4 = t.state.connections[0];
+    delete c4.waypoints;
+    c4.bends = { 2: 230 };   // pull the middle rail onto the first rail's line
+    t.state.selectedConnection = 'wc';
+    t.recolorAllToTheme({ silent: true, devices: false, zones: false, textBoxes: false });
+    const rendered = route(c4);
+    let live = 0;
+    for (let i = 1; i < rendered.length - 2; i++) {
+      if (Math.abs(rendered[i].x-rendered[i+1].x) >= 4 ||
+          Math.abs(rendered[i].y-rendered[i+1].y) >= 4) live++;
+    }
+    const handles = idoc.getElementById('wc').querySelectorAll('.conn-bend-handle').length;
+    ok('setup: the collapse left a degenerate interior segment',
+      live < rendered.length - 3, live + ' live of ' + (rendered.length - 3));
+    ok('collapsed segments render no bend handle', handles === live,
+      handles + ' handles for ' + live + ' live segments');
   });
 }
 

@@ -2051,27 +2051,59 @@
             if (Math.abs(imported[i].x - imported[i + 1].x) >= ROUTE_EPS &&
                 Math.abs(imported[i].y - imported[i + 1].y) >= ROUTE_EPS) return false;
         }
+        const savedWaypoints = conn.waypoints, savedBends = conn.bends,
+              savedFlag = conn.bendsOnAvoid;
+        const restore = () => {
+            conn.waypoints = savedWaypoints;
+            if (savedBends !== undefined) conn.bends = savedBends; else delete conn.bends;
+            if (savedFlag !== undefined) conn.bendsOnAvoid = savedFlag; else delete conn.bendsOnAvoid;
+            return false;
+        };
+        // Decide the skeleton FIRST, on the pristine connection, exactly like
+        // a bend drag does: the fitted bends must replay against the same
+        // skeleton they were fitted to. (Before this, the fit used the scored
+        // route while the dry-run replayed against the classic one, so any
+        // connection whose corridor the router would dodge silently failed to
+        // convert.)
+        conn.waypoints = null;
+        delete conn.bends;
+        adoptAvoidedSkeleton(conn);
         const natural = routeOrthogonal(start, end, conn);
         const nOr = naturalSegmentOrientations(natural);
         const iOr = naturalSegmentOrientations(imported);
         const n = nOr.length, k = iOr.length;
-        // Only routes whose SHAPE matches the natural template convert: same
-        // segment count, same orientations (both alternate, so matching
-        // counts + first segments means they all line up). Forcing a shorter
-        // route onto a longer template - collapsing leftover segments to
-        // zero length - draws the right path but leaves PHANTOM segments in
-        // the model: stacked bend handles on one corner, and hidden
-        // zero-length legs that unfold into jogs when dragged or when an
-        // endpoint later moves. Routes that don't fit keep their waypoints
-        // (the honest representation, with waypoint drag handles).
-        if (k !== n || nOr[0] !== iOr[0]) return false;
-        const iCross = j => iOr[j] ? imported[j].x : imported[j].y;
-        const bends = {};
-        for (let i = 1; i <= n - 2; i++) bends[i] = iCross(i);
+        // A route with MORE corners than the template has segments cannot be
+        // expressed as bends at all - it keeps its waypoints (the honest
+        // representation, with waypoint drag handles).
+        if (k > n || nOr[0] !== iOr[0]) return restore();
+        if (k === n) {
+            // Same shape as the template: every rail maps by index.
+            const iCross = j => iOr[j] ? imported[j].x : imported[j].y;
+            const bends = {};
+            for (let i = 1; i <= n - 2; i++) bends[i] = iCross(i);
+            conn.bends = bends;
+        } else {
+            // FEWER corners: the shape fits only by collapsing leftover
+            // template segments to zero length. That used to be refused
+            // outright - collapsed legs carried misleading mid-run drag
+            // handles - but degenerate segments no longer render handles, so
+            // the trade flips: a converted route that follows device moves
+            // beats a frozen waypoint route. refitBendsToPath already knows
+            // how to express an arbitrary polyline as bends on this skeleton
+            // (rail-overlap assignment); the dry-run below still insists the
+            // reproduction is EXACT, so any approximation keeps waypoints.
+            refitBendsToPath(conn, imported);
+            if (!conn.bends || !Object.keys(conn.bends).length) {
+                // Nothing fitted: only a win if the natural route IS the shape
+                if (routesEqual(normalizeRoute(connRoutePoints(conn, start, end)), imported)) {
+                    delete conn.waypoints;
+                    delete conn.bends;
+                    return true;
+                }
+                return restore();
+            }
+        }
         // Dry-run through the app's own router: convert only on an exact match
-        const savedWaypoints = conn.waypoints, savedBends = conn.bends;
-        conn.waypoints = null;
-        conn.bends = bends;
         const got = normalizeRoute(connRoutePoints(conn, start, end));
         if (routesEqual(got, imported)) {
             delete conn.waypoints;
@@ -2086,9 +2118,7 @@
             if (!Object.keys(conn.bends).length) { delete conn.bends; delete conn.bendsOnAvoid; }
             return true;
         }
-        conn.waypoints = savedWaypoints;
-        conn.bends = savedBends;
-        return false;
+        return restore();
     }
 
     function findNodeForPoint(point) {
@@ -2943,6 +2973,13 @@
             state.selectedConnection === conn.id && points.length >= 4) {
             for (let i = 1; i < points.length - 2; i++) {
                 const p1 = points[i], p2 = points[i + 1];
+                // A segment collapsed to (near) zero length - two rails bent
+                // onto the same line - gets NO handle: it sits mid-run on
+                // what looks like one straight line, reads as vertical to the
+                // axis test (0 <= 0), and dragging it just slides the
+                // invisible joint along the line. The step stays in the
+                // model; pull the rails apart again and its handle returns.
+                if (Math.abs(p1.x - p2.x) < 4 && Math.abs(p1.y - p2.y) < 4) continue;
                 const isVert = Math.abs(p1.x - p2.x) <= Math.abs(p1.y - p2.y);
                 const hx = (p1.x + p2.x) / 2, hy = (p1.y + p2.y) / 2;
                 const handle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -16970,7 +17007,7 @@
             // polyline exactly as the renderer does.
             connRoutePoints, resolveConnEndpoint, routeOrthogonal, getAbsoluteAP, findNode,
             refitBendsToPath, setNodeAPCount, feasibleAPMax, floatingAPIndex,
-            adoptAvoidedSkeleton, classicOrthogonal,
+            adoptAvoidedSkeleton, classicOrthogonal, convertWaypointsToBends,
             // label placement along that polyline (conn.labelT)
             connLabelAnchor, connLabelT, getNearestT, getPointAlongPath,
             // connect-mode press routing, extracted so it is testable without
