@@ -80,6 +80,13 @@
     // else's copy - the wall must match what was drawn.
     let ROUTE_CLEARANCE = 6;
     const ROUTE_CLEARANCE_DEFAULT = 6;
+    // Line jumps: hop this board's connections over each other where they
+    // cross. A BOARD property, not an editor preference (contrast btn-grid /
+    // btn-guides, which live in localStorage): boards with deliberately
+    // layered connections look wrong with hops, so the choice belongs to the
+    // diagram - and it travels in the file so the kiosk draws what the editor
+    // drew. Off by default; existing boards render exactly as before.
+    let LINE_JUMPS = false;
     const AP_RADIUS = 6;
 
     let state = {
@@ -212,6 +219,14 @@
         });
     }
 
+    // One writer for the board's line-jump flag so the value and the toolbar
+    // button can never disagree - loads, undo and the button all land here.
+    function setLineJumps(on) {
+        LINE_JUMPS = on === true;
+        const btn = document.getElementById('btn-jumps');
+        if (btn) btn.classList.toggle('active', LINE_JUMPS);
+    }
+
     // One writer for the router's clearance so the value, the slider and the
     // label can never disagree - loads, undo and the control itself all land
     // here. Clamped to the slider's own range: the value comes out of a file.
@@ -238,10 +253,12 @@
             // not the newly opened file's name (which Save would then reuse).
             diagramTitle: state.diagramTitle,
             diagramVersion: state.diagramVersion,
-            // Router clearance is document state (it changes every computed
-            // route), so undo has to carry it or Ctrl+Z would restore the
-            // geometry without the setting that shaped it.
-            routeClearance: ROUTE_CLEARANCE
+            // Router clearance and line jumps are document state (they change
+            // what every connection draws), so undo has to carry them or
+            // Ctrl+Z would restore the geometry without the settings that
+            // shaped it.
+            routeClearance: ROUTE_CLEARANCE,
+            lineJumps: LINE_JUMPS
         }, snapshotReplacer);
     }
 
@@ -284,6 +301,7 @@
             updateTitleVersionUI();
         }
         if (data.routeClearance !== undefined) setRouteClearance(data.routeClearance);
+        if (data.lineJumps !== undefined) setLineJumps(data.lineJumps);
         state.selectedDevice = null;
         state.selectedConnection = null;
         state.selectedZone = null;
@@ -403,7 +421,8 @@
             redoStack.length = 0;
             gcSnapshotIntern();
             updateUndoRedoButtons();
-            setDirty(true);
+            setDirty(true);   // with jumps on this also schedules the
+                              // stale-hop refresh (see scheduleJumpRefresh)
         }
         preDragSnapshot = null;
     }
@@ -2096,11 +2115,128 @@
         return routes;
     }
 
-    function buildPathString(points, routing) {
+    // --- Line jumps ---------------------------------------------------------
+    // Where two connections cross, the one drawn ON TOP hops over the one
+    // underneath. "On top" is array order in state.connections (which is the
+    // paint order renderAllConnections establishes), so connection i hops
+    // over connections 0..i-1 and never vice versa - one hop per crossing,
+    // deterministically, with no per-connection setting to manage.
+    //
+    // Only perpendicular, strictly-interior crossings hop. The strictness is
+    // what protects network conventions: a T-junction - a cable that ENDS on
+    // another line, the classic bus tap - is a junction, not a crossing, and
+    // must not hop. Same for the sample's deliberately layered runs: parallel
+    // overlapping segments never cross perpendicular, so they draw exactly as
+    // layered. Diagonal (straight-routing) segments never hop.
+    //
+    // Hops are a RENDER artifact only: connRoutePoints stays hop-free, so
+    // hit-testing, bends, label placement and annotation anchors are
+    // untouched, and the SVG export inherits hops for free because it clones
+    // the rendered DOM.
+
+    // One renderAllConnections pass routes every connection up to i-1 for
+    // each i - cache the polylines for the duration of the loop so a full
+    // render costs O(n) routings, not O(n^2).
+    let jumpRouteCache = null;
+
+    function connJumpsFor(conn, points) {
+        if (!LINE_JUMPS) return null;
+        const idx = state.connections.indexOf(conn);
+        if (idx <= 0) return null;   // bottom connection never hops
+        const EPS = 0.5;
+        const hops = [];
+        for (let j = 0; j < idx; j++) {
+            const o = state.connections[j];
+            let poly = jumpRouteCache && jumpRouteCache.get(o.id);
+            if (!poly) {
+                const s = resolveConnEndpoint(o, 'from'), e = resolveConnEndpoint(o, 'to');
+                if (!s || !e) continue;
+                poly = connRoutePoints(o, s, e);
+                if (jumpRouteCache) jumpRouteCache.set(o.id, poly);
+            }
+            for (let i = 0; i < points.length - 1; i++) {
+                const a = points[i], b = points[i + 1];
+                const horiz = Math.abs(a.y - b.y) <= 0.01 && Math.abs(a.x - b.x) > EPS;
+                const vert = Math.abs(a.x - b.x) <= 0.01 && Math.abs(a.y - b.y) > EPS;
+                if (!horiz && !vert) continue;
+                for (let k = 0; k < poly.length - 1; k++) {
+                    const c = poly[k], d = poly[k + 1];
+                    if (horiz) {
+                        if (!(Math.abs(c.x - d.x) <= 0.01 && Math.abs(c.y - d.y) > EPS)) continue;
+                        const x = c.x, y = a.y;
+                        if (x - Math.min(a.x, b.x) > EPS && Math.max(a.x, b.x) - x > EPS &&
+                            y - Math.min(c.y, d.y) > EPS && Math.max(c.y, d.y) - y > EPS) {
+                            hops.push({ x, y, vert: false });
+                        }
+                    } else {
+                        if (!(Math.abs(c.y - d.y) <= 0.01 && Math.abs(c.x - d.x) > EPS)) continue;
+                        const x = a.x, y = c.y;
+                        if (y - Math.min(a.y, b.y) > EPS && Math.max(a.y, b.y) - y > EPS &&
+                            x - Math.min(c.x, d.x) > EPS && Math.max(c.x, d.x) - x > EPS) {
+                            hops.push({ x, y, vert: true });
+                        }
+                    }
+                }
+            }
+        }
+        return hops.length ? hops : null;
+    }
+
+    // Append the run from `from` to `to`, arcing over every hop that lies on
+    // it. Horizontal hops bulge up, vertical hops bulge right - fixed, so the
+    // picture is stable no matter which direction a segment happens to run.
+    // Hops are merged when closer than a diameter (layered boards stack
+    // several crossings at nearly one spot - one wide hop, not a moire of
+    // arclets) and dropped when the segment has no room (margin covers the
+    // corner-rounding radius so an arc never collides with a rounded elbow).
+    function segWithHops(from, to, hops, r, margin) {
+        const dx = to.x - from.x, dy = to.y - from.y;
+        const horiz = Math.abs(dy) <= 0.01 && Math.abs(dx) > 0.01;
+        const vert = Math.abs(dx) <= 0.01 && Math.abs(dy) > 0.01;
+        let d = '';
+        if (hops && (horiz || vert)) {
+            const EPS = 0.5;
+            const lo = horiz ? Math.min(from.x, to.x) : Math.min(from.y, to.y);
+            const hi = horiz ? Math.max(from.x, to.x) : Math.max(from.y, to.y);
+            const line = horiz ? from.y : from.x;
+            const mine = hops
+                .filter(h => h.vert === !horiz &&
+                    Math.abs((horiz ? h.y : h.x) - line) <= EPS &&
+                    (horiz ? h.x : h.y) - lo > margin && hi - (horiz ? h.x : h.y) > margin)
+                .map(h => horiz ? h.x : h.y)
+                .sort((p, q) => p - q);
+            // Merge into [start,end] intervals a diameter or closer apart.
+            const iv = [];
+            for (const p of mine) {
+                if (iv.length && p - iv[iv.length - 1][1] <= r * 2) iv[iv.length - 1][1] = p;
+                else iv.push([p, p]);
+            }
+            const fwd = horiz ? dx > 0 : dy > 0;
+            if (!fwd) iv.reverse();
+            for (const [p1, p2] of iv) {
+                const en = fwd ? p1 - r : p2 + r;    // hop entry along travel
+                const ex = fwd ? p2 + r : p1 - r;    // hop exit
+                const rx = Math.abs(ex - en) / 2;
+                if (horiz) {
+                    const sweep = dx > 0 ? 1 : 0;    // bulge up either way
+                    d += ` L ${en} ${from.y} A ${rx} ${r} 0 0 ${sweep} ${ex} ${from.y}`;
+                } else {
+                    const sweep = dy > 0 ? 1 : 0;    // bulge right either way
+                    d += ` L ${from.x} ${en} A ${r} ${rx} 0 0 ${sweep} ${from.x} ${ex}`;
+                }
+            }
+        }
+        return d + ` L ${to.x} ${to.y}`;
+    }
+
+    function buildPathString(points, routing, hops) {
         if (points.length < 2) return '';
+        const hopR = 5;
 
         if (routing === 'straight') {
-            return `M ${points[0].x} ${points[0].y} L ${points[points.length - 1].x} ${points[points.length - 1].y}`;
+            const a = points[0], b = points[points.length - 1];
+            if (hops) return `M ${a.x} ${a.y}` + segWithHops(a, b, hops, hopR, hopR + 2);
+            return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
         }
 
         if (routing === 'rounded') {
@@ -2115,6 +2251,11 @@
 
             let d = `M ${cleaned[0].x} ${cleaned[0].y}`;
             const radius = 10;
+            // Where the pen actually is: cleaned[0], then each corner arc's
+            // exit. The straight run to the next corner starts here, which is
+            // what lets hop arcs share a segment with rounded elbows - the
+            // margin in segWithHops keeps them from ever touching.
+            let pen = cleaned[0];
             for (let i = 1; i < cleaned.length - 1; i++) {
                 const prev = cleaned[i - 1];
                 const curr = cleaned[i];
@@ -2129,13 +2270,17 @@
                 const len2 = Math.sqrt(d2x * d2x + d2y * d2y);
 
                 if (len1 < 0.5 || len2 < 0.5) {
-                    d += ` L ${curr.x} ${curr.y}`;
+                    d += hops ? segWithHops(pen, curr, hops, hopR, hopR + 2) : ` L ${curr.x} ${curr.y}`;
+                    pen = curr;
                     continue;
                 }
 
                 const cross = d1x * d2y - d1y * d2x;
                 if (Math.abs(cross) < 0.1) {
-                    d += ` L ${curr.x} ${curr.y}`;
+                    // A collinear midpoint splits one straight run in two -
+                    // each half carries its own hops or crossings there vanish.
+                    d += hops ? segWithHops(pen, curr, hops, hopR, hopR + 2) : ` L ${curr.x} ${curr.y}`;
+                    pen = curr;
                     continue;
                 }
 
@@ -2146,10 +2291,13 @@
                 const endX = curr.x + (d2x / len2) * r;
                 const endY = curr.y + (d2y / len2) * r;
 
-                d += ` L ${startX} ${startY}`;
+                d += hops ? segWithHops(pen, { x: startX, y: startY }, hops, hopR, hopR + 2)
+                          : ` L ${startX} ${startY}`;
                 d += ` Q ${curr.x} ${curr.y} ${endX} ${endY}`;
+                pen = { x: endX, y: endY };
             }
-            d += ` L ${cleaned[cleaned.length - 1].x} ${cleaned[cleaned.length - 1].y}`;
+            d += hops ? segWithHops(pen, cleaned[cleaned.length - 1], hops, hopR, hopR + 2)
+                      : ` L ${cleaned[cleaned.length - 1].x} ${cleaned[cleaned.length - 1].y}`;
             return d;
         }
 
@@ -2162,7 +2310,7 @@
         for (let i = 1; i < points.length; i++) {
             const p = points[i];
             if (Math.abs(p.x - prev.x) < 0.01 && Math.abs(p.y - prev.y) < 0.01) continue;
-            d += ` L ${p.x} ${p.y}`;
+            d += hops ? segWithHops(prev, p, hops, hopR, hopR + 2) : ` L ${p.x} ${p.y}`;
             prev = p;
         }
         return d;
@@ -2414,7 +2562,7 @@
             endMarkerSize = Math.round(trimPointsForMarker(points, arrowSizeFor(conn, endArrow), false));
         }
 
-        const pathStr = buildPathString(points, conn.routing);
+        const pathStr = buildPathString(points, conn.routing, connJumpsFor(conn, points));
 
         // Dark-mode flip is surface-aware: a near-black line goes white only
         // when most of its route runs over dark surface (sampled at the two
@@ -2658,7 +2806,12 @@
 
     function renderAllConnections() {
         connectionsLayer.innerHTML = '';
-        state.connections.forEach(renderConnection);
+        jumpRouteCache = LINE_JUMPS ? new Map() : null;
+        try {
+            state.connections.forEach(renderConnection);
+        } finally {
+            jumpRouteCache = null;
+        }
     }
 
     // --- Device Templates & Import ---
@@ -3353,6 +3506,15 @@
     try {
         if (localStorage.getItem('crosscanvas-guides') === '0') applyGuides(false);
     } catch (e) { /* ignore */ }
+
+    // Line jumps: a BOARD property (see LINE_JUMPS), so unlike its neighbours
+    // this button writes the document - undoable, dirties, travels in saves.
+    document.getElementById('btn-jumps').addEventListener('click', () => {
+        pushUndo();
+        setLineJumps(!LINE_JUMPS);
+        renderAllConnections();
+        setDirty(true);
+    });
 
     // --- Toolbar quick-action buttons (mirror Edit menu) ---
     const toolbarActions = {
@@ -4696,10 +4858,27 @@
         document.getElementById('diagram-version').textContent = ', v' + (state.diagramVersion || 1);
     }
 
+    // With jumps on, ANY document change can move a crossing, and most edit
+    // paths re-render only the connection they touched - a stationary line's
+    // hop over an edited one goes stale. Every one of those paths already
+    // funnels through setDirty, so one debounced full connection pass there
+    // self-heals them all; no per-site bookkeeping, and 60ms of coalescing
+    // keeps rapid slider edits at one extra render. Deliberately NOT wired
+    // into drags (they call setDirty once at commit, where the pass belongs).
+    let jumpRefreshTimer = null;
+    function scheduleJumpRefresh() {
+        if (jumpRefreshTimer) clearTimeout(jumpRefreshTimer);
+        jumpRefreshTimer = setTimeout(() => {
+            jumpRefreshTimer = null;
+            renderAllConnections();
+        }, 60);
+    }
+
     function setDirty(dirty) {
         state.dirty = dirty;
         document.getElementById('dirty-indicator').classList.toggle('visible', dirty);
         if (dirty && typeof scheduleAutosave === 'function') scheduleAutosave();
+        if (dirty && LINE_JUMPS) scheduleJumpRefresh();
     }
 
     function setTool(tool) {
@@ -9186,6 +9365,10 @@
         state.selectedConnections = [];
         clearAnnotationSelection();
         state.clipboard = null;
+        // Board-level routing properties reset with the document - a fresh
+        // board must not inherit the previous board's clearance or jumps.
+        setRouteClearance(ROUTE_CLEARANCE_DEFAULT);
+        setLineJumps(false);
     }
 
     function buildSampleDiagram() {
@@ -11705,6 +11888,7 @@
         // A board without the field predates it (or was saved at the default) -
         // fall back to the default rather than inheriting the previous board's.
         setRouteClearance(data.routeClearance !== undefined ? data.routeClearance : ROUTE_CLEARANCE_DEFAULT);
+        setLineJumps(data.lineJumps === true);
         state.groups = Array.isArray(data.groups)
             ? data.groups.filter(g => g && Array.isArray(g.members)).map(g => ({ id: g.id || genId(), members: g.members.slice() }))
             : [];
@@ -12661,6 +12845,7 @@
             // the editor and another on the wall. Omitted at the default so
             // existing files stay byte-identical through a round trip.
             ...(ROUTE_CLEARANCE !== ROUTE_CLEARANCE_DEFAULT ? { routeClearance: ROUTE_CLEARANCE } : {}),
+            ...(LINE_JUMPS ? { lineJumps: true } : {}),
             devices: state.devices.map(d => Object.assign({}, d, { image: ref(d.image), originalImage: ref(d.originalImage) })),
             connections: state.connections,
             zones: state.zones,

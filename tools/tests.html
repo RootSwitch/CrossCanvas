@@ -303,6 +303,7 @@ async function run(t) {
 
   routingSuite(t);
   obstacleSuite(t);
+  lineJumpSuite(t);
   labelSlideSuite(t);
   connectIntentSuite(t);
   await clipboardSuite(t);
@@ -474,6 +475,82 @@ function obstacleSuite(t) {
     ok('Complex Sample: every route is byte-identical to the classic router', moved === 0,
       moved + ' of ' + t.state.connections.length + ' routes moved');
     ok('Complex Sample: no route crosses a device', crossed.length === 0, crossed.join('; '));
+  });
+}
+
+// --- line jumps ------------------------------------------------------------
+// A board-level toggle: where two connections cross, the one drawn ON TOP
+// (later in state.connections = painted later) hops the one underneath.
+// Strictly-interior perpendicular crossings only - a T-junction (a cable
+// ENDING on another line, the classic bus tap) is a junction, not a
+// crossing, and layered parallel runs never hop. Off by default and omitted
+// from saves when off, so existing boards render and round-trip untouched.
+function lineJumpSuite(t) {
+  const idoc = document.querySelector('iframe').contentDocument;
+  const AP = (w,h) => [{rx:w/2,ry:0},{rx:w,ry:0},{rx:w,ry:h/2},{rx:w,ry:h},{rx:w/2,ry:h},{rx:0,ry:h},{rx:0,ry:h/2},{rx:0,ry:0}];
+  const box = (id,x,y) => ({ id, x, y, w:60, h:60, label:id, labelPosition:'bottom', fontSize:14,
+    fontColor:'#333333', tintColor:null, spans:[[{text:id,bold:false,italic:false}]],
+    lineFormats:[{bold:false,italic:false}], attachmentPoints:AP(60,60), fields:{} });
+  const conn = (id,a,b,fa,ta) => ({ id, fromDevice:a, fromAP:fa, toDevice:b, toAP:ta, color:'#333333',
+    thickness:2, dash:'solid', routing:'rounded', label:'', labelPosition:'top', labelVAlign:'top',
+    fontSize:14, fontColor:'#333333', lineFormats:[], spans:[], startArrow:'none', endArrow:'none', annotations:[] });
+  const doc = (devs, conns) => ({ version:6, diagramTitle:'jump-test', diagramVersion:1,
+    devices:devs, connections:conns, zones:[], textBoxes:[], images:[], groups:[],
+    deviceTemplates:[], imageTable:{}, nextId:50 });
+  const dOf = id => idoc.getElementById(id).querySelector('.connection-line').getAttribute('d');
+  const arcs = id => (dOf(id).match(/A /g)||[]).length;
+  const jumpsBtn = () => idoc.getElementById('btn-jumps');
+
+  suite('Line jumps', () => {
+    // Crossing pair: horizontal drawn first (under), vertical second (over).
+    t.applyDiagramData(doc(
+      [box('a',100,300),box('b',500,300),box('c',270,150),box('d',270,450)],
+      [conn('cu','a','b',2,6), conn('co','c','d',4,0)]));
+    const plainOver = dOf('co'), plainUnder = dOf('cu');
+    ok('jumps default OFF: no arcs anywhere', arcs('co') === 0 && arcs('cu') === 0);
+    ok('save at default omits the field', t.serializeDiagram(false).lineJumps === undefined);
+
+    jumpsBtn().click();
+    ok('the TOP connection hops, exactly once', arcs('co') === 1, dOf('co'));
+    ok('the UNDERNEATH connection does not hop', arcs('cu') === 0, dOf('cu'));
+    ok('toolbar button reflects board state', jumpsBtn().classList.contains('active'));
+    ok('save carries lineJumps: true', t.serializeDiagram(false).lineJumps === true);
+
+    // Round trip: a board saved with jumps on renders hops on load.
+    const saved = JSON.parse(JSON.stringify(t.serializeDiagram(false)));
+    jumpsBtn().click();
+    ok('toggle off restores byte-identical paths', dOf('co') === plainOver && dOf('cu') === plainUnder);
+    t.applyDiagramData(saved);
+    ok('loading a jumps-on board re-renders its hops', arcs('co') === 1 && jumpsBtn().classList.contains('active'));
+
+    // T-junction: cx ENDS on cu's line (bus tap) - a junction, not a crossing.
+    t.applyDiagramData(doc(
+      [box('a',100,300),box('b',500,300),box('c',270,150)],
+      [conn('cu','a','b',2,6), conn('ct','c','a',4,2)]));
+    jumpsBtn().click();
+    ok('a T-junction tap never hops', arcs('ct') === 0 && arcs('cu') === 0,
+      'tap: ' + dOf('ct'));
+
+    // Layered parallel runs (the Complex Sample pattern): same corridor, no
+    // perpendicular crossing, no hops - layering draws exactly as layered.
+    t.applyDiagramData(doc(
+      [box('a',100,300),box('b',500,300)],
+      [conn('c1','a','b',2,6), conn('c2','a','b',2,6)]));
+    jumpsBtn().click();
+    ok('layered parallel connections never hop', arcs('c1') === 0 && arcs('c2') === 0);
+
+    // Fresh board resets the flag - a new diagram must not inherit it.
+    t.applyDiagramData(doc([box('a',100,300)],[]));
+    ok('a board without the field loads with jumps off', !jumpsBtn().classList.contains('active'));
+
+    // Complex Sample regression: default off = not a single arc on the board
+    // the user actually looks at.
+    t.buildComplexSampleDiagram();
+    const anyArc = t.state.connections.some(c => {
+      const el = idoc.getElementById(c.id);
+      return el && /A /.test(el.querySelector('.connection-line').getAttribute('d'));
+    });
+    ok('Complex Sample renders arc-free with jumps off', !anyArc);
   });
 }
 
