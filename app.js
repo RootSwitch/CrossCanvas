@@ -2373,12 +2373,16 @@
     // over connections 0..i-1 and never vice versa - one hop per crossing,
     // deterministically, with no per-connection setting to manage.
     //
-    // Only perpendicular, strictly-interior crossings hop. The strictness is
-    // what protects network conventions: a T-junction - a cable that ENDS on
-    // another line, the classic bus tap - is a junction, not a crossing, and
-    // must not hop. Same for the sample's deliberately layered runs: parallel
-    // overlapping segments never cross perpendicular, so they draw exactly as
-    // layered. Diagonal (straight-routing) segments never hop.
+    // Crossings hop at ANY angle (matching Visio/draw.io behavior), with two
+    // guards that protect network conventions. STRICT INTERIOR: a T-junction -
+    // a cable that ENDS on another line, the classic bus tap - is a junction,
+    // not a crossing, and must not hop; endpoints are excluded by half a
+    // pixel of arc length on both segments. NEAR-PARALLEL EXCLUSION: segments
+    // meeting shallower than ~11 degrees do not hop - it is the any-angle
+    // generalization of "layered parallel runs never hop", and it is what
+    // keeps a shallow graze from sprouting a hop that visually clears
+    // nothing. Perpendicular crossings sit at the far end of that scale, so
+    // the original orthogonal behavior is the special case, unchanged.
     //
     // Hops are a RENDER artifact only: connRoutePoints stays hop-free, so
     // hit-testing, bends, label placement and annotation anchors are
@@ -2407,26 +2411,24 @@
             }
             for (let i = 0; i < points.length - 1; i++) {
                 const a = points[i], b = points[i + 1];
-                const horiz = Math.abs(a.y - b.y) <= 0.01 && Math.abs(a.x - b.x) > EPS;
-                const vert = Math.abs(a.x - b.x) <= 0.01 && Math.abs(a.y - b.y) > EPS;
-                if (!horiz && !vert) continue;
+                const rx = b.x - a.x, ry = b.y - a.y;
+                const rLen = Math.hypot(rx, ry);
+                if (rLen < EPS) continue;
                 for (let k = 0; k < poly.length - 1; k++) {
                     const c = poly[k], d = poly[k + 1];
-                    if (horiz) {
-                        if (!(Math.abs(c.x - d.x) <= 0.01 && Math.abs(c.y - d.y) > EPS)) continue;
-                        const x = c.x, y = a.y;
-                        if (x - Math.min(a.x, b.x) > EPS && Math.max(a.x, b.x) - x > EPS &&
-                            y - Math.min(c.y, d.y) > EPS && Math.max(c.y, d.y) - y > EPS) {
-                            hops.push({ x, y, vert: false });
-                        }
-                    } else {
-                        if (!(Math.abs(c.y - d.y) <= 0.01 && Math.abs(c.x - d.x) > EPS)) continue;
-                        const x = a.x, y = c.y;
-                        if (y - Math.min(a.y, b.y) > EPS && Math.max(a.y, b.y) - y > EPS &&
-                            x - Math.min(c.x, d.x) > EPS && Math.max(c.x, d.x) - x > EPS) {
-                            hops.push({ x, y, vert: true });
-                        }
-                    }
+                    const sx = d.x - c.x, sy = d.y - c.y;
+                    const sLen = Math.hypot(sx, sy);
+                    if (sLen < EPS) continue;
+                    // sin of the crossing angle, via unit-vector cross product
+                    const denom = rx * sy - ry * sx;
+                    if (Math.abs(denom / (rLen * sLen)) < 0.2) continue;   // ~11deg
+                    const acx = c.x - a.x, acy = c.y - a.y;
+                    const t = (acx * sy - acy * sx) / denom;   // along ours
+                    const u = (acx * ry - acy * rx) / denom;   // along theirs
+                    // Strict interior in PIXELS of arc length on both segments
+                    if (t * rLen <= EPS || (1 - t) * rLen <= EPS) continue;
+                    if (u * sLen <= EPS || (1 - u) * sLen <= EPS) continue;
+                    hops.push({ x: a.x + t * rx, y: a.y + t * ry });
                 }
             }
         }
@@ -2434,27 +2436,29 @@
     }
 
     // Append the run from `from` to `to`, arcing over every hop that lies on
-    // it. Horizontal hops bulge up, vertical hops bulge right - fixed, so the
-    // picture is stable no matter which direction a segment happens to run.
-    // Hops are merged when closer than a diameter (layered boards stack
-    // several crossings at nearly one spot - one wide hop, not a moire of
-    // arclets) and dropped when the segment has no room (margin covers the
-    // corner-rounding radius so an arc never collides with a rounded elbow).
+    // it - at any angle. Hops match a run by pure geometry: within half a
+    // pixel of its line and inside its margins, so no index bookkeeping
+    // survives between detection and emission. The bulge side is one rule
+    // with the old conventions as special cases: toward the UPWARD side of
+    // the segment, except near-vertical segments bulge RIGHT (horizontal
+    // runs bulge up, vertical runs bulge right, exactly as before). Hops
+    // merge when closer than a diameter (layered boards stack crossings -
+    // one wide hop, not a moire of arclets; the merged ellipse rotates with
+    // the segment) and drop when the run has no room (margin keeps arcs
+    // clear of rounded elbows).
     function segWithHops(from, to, hops, r, margin) {
         const dx = to.x - from.x, dy = to.y - from.y;
-        const horiz = Math.abs(dy) <= 0.01 && Math.abs(dx) > 0.01;
-        const vert = Math.abs(dx) <= 0.01 && Math.abs(dy) > 0.01;
+        const len = Math.hypot(dx, dy);
         let d = '';
-        if (hops && (horiz || vert)) {
-            const EPS = 0.5;
-            const lo = horiz ? Math.min(from.x, to.x) : Math.min(from.y, to.y);
-            const hi = horiz ? Math.max(from.x, to.x) : Math.max(from.y, to.y);
-            const line = horiz ? from.y : from.x;
+        if (hops && len > 0.01) {
+            const ux = dx / len, uy = dy / len;
             const mine = hops
-                .filter(h => h.vert === !horiz &&
-                    Math.abs((horiz ? h.y : h.x) - line) <= EPS &&
-                    (horiz ? h.x : h.y) - lo > margin && hi - (horiz ? h.x : h.y) > margin)
-                .map(h => horiz ? h.x : h.y)
+                .map(h => {
+                    const px = h.x - from.x, py = h.y - from.y;
+                    return { t: px * ux + py * uy, off: Math.abs(px * uy - py * ux) };
+                })
+                .filter(h => h.off <= 0.5 && h.t > margin && h.t < len - margin)
+                .map(h => h.t)
                 .sort((p, q) => p - q);
             // Merge into [start,end] intervals a diameter or closer apart.
             const iv = [];
@@ -2462,19 +2466,19 @@
                 if (iv.length && p - iv[iv.length - 1][1] <= r * 2) iv[iv.length - 1][1] = p;
                 else iv.push([p, p]);
             }
-            const fwd = horiz ? dx > 0 : dy > 0;
-            if (!fwd) iv.reverse();
+            // Sweep 1 bulges toward the LEFT normal of travel, (uy, -ux),
+            // whose y-component is -ux: rightward travel bulges up with
+            // sweep 1, leftward needs sweep 0, and pure-vertical travel
+            // (ux ~ 0) bulges right when heading down. Old H-up / V-right
+            // conventions fall out as the axis-aligned cases.
+            const sweep = ux > 0.01 ? 1 : ux < -0.01 ? 0 : (uy > 0 ? 1 : 0);
+            const angle = Math.round(Math.atan2(dy, dx) * 180 / Math.PI * 100) / 100;
             for (const [p1, p2] of iv) {
-                const en = fwd ? p1 - r : p2 + r;    // hop entry along travel
-                const ex = fwd ? p2 + r : p1 - r;    // hop exit
-                const rx = Math.abs(ex - en) / 2;
-                if (horiz) {
-                    const sweep = dx > 0 ? 1 : 0;    // bulge up either way
-                    d += ` L ${en} ${from.y} A ${rx} ${r} 0 0 ${sweep} ${ex} ${from.y}`;
-                } else {
-                    const sweep = dy > 0 ? 1 : 0;    // bulge right either way
-                    d += ` L ${from.x} ${en} A ${r} ${rx} 0 0 ${sweep} ${from.x} ${ex}`;
-                }
+                const en = p1 - r, ex = p2 + r;
+                const rx = (ex - en) / 2;
+                d += ` L ${from.x + ux * en} ${from.y + uy * en}` +
+                     ` A ${rx} ${r} ${angle} 0 ${sweep}` +
+                     ` ${from.x + ux * ex} ${from.y + uy * ex}`;
             }
         }
         return d + ` L ${to.x} ${to.y}`;

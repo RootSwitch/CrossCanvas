@@ -617,6 +617,56 @@ function lineJumpSuite(t) {
     jumpsBtn().click();
     ok('layered parallel connections never hop', arcs('c1') === 0 && arcs('c2') === 0);
 
+    // ANY-ANGLE crossings hop (Visio/draw.io behavior). Free-ended straight
+    // connections make arbitrary angles easy to construct.
+    const freeConn = (id, x1, y1, x2, y2) => ({ id, fromDevice:null, fromAP:null,
+      fromPoint:{x:x1,y:y1}, toDevice:null, toAP:null, toPoint:{x:x2,y:y2},
+      routing:'straight', color:'#333333', thickness:2, dash:'solid', label:'',
+      labelPosition:'top', labelVAlign:'top', fontSize:14, fontColor:'#333333',
+      lineFormats:[], spans:[], startArrow:'none', endArrow:'none', annotations:[] });
+
+    // Angled straight (top) over an orthogonal route (under): one hop, on
+    // the angled line.
+    t.applyDiagramData(doc(
+      [box('a',100,300),box('b',500,300)],
+      [conn('under','a','b',2,6), freeConn('diag', 250, 150, 420, 450)]));
+    jumpsBtn().click();
+    ok('an ANGLED line hops over an orthogonal one', arcs('diag') === 1, dOf('diag'));
+    ok('the orthogonal line underneath does not hop', arcs('under') === 0);
+
+    // Orthogonal (top) over angled (under): the hop swaps to the ortho line.
+    t.applyDiagramData(doc(
+      [box('a',100,300),box('b',500,300)],
+      [freeConn('diag', 250, 150, 420, 450), conn('over','a','b',2,6)]));
+    jumpsBtn().click();
+    ok('an orthogonal line hops over an ANGLED one', arcs('over') === 1, dOf('over'));
+    ok('the angled line underneath does not hop', arcs('diag') === 0);
+
+    // Angled over angled: a clean X crosses once.
+    t.applyDiagramData(doc([],
+      [freeConn('x1', 100, 100, 400, 400), freeConn('x2', 100, 400, 400, 100)]));
+    jumpsBtn().click();
+    ok('angled-over-angled hops once, on the top line', arcs('x2') === 1 && arcs('x1') === 0,
+      dOf('x2'));
+
+    // Near-parallel guard: a shallow (~3 degree) graze never hops, even
+    // though the lines genuinely cross (y runs 340 -> 315 across the rail
+    // at y=330, crossing at x ~ 284).
+    t.applyDiagramData(doc(
+      [box('a',100,300),box('b',500,300)],
+      [conn('under2','a','b',2,6), freeConn('graze', 100, 340, 560, 315)]));
+    jumpsBtn().click();
+    ok('a near-parallel graze never hops', arcs('graze') === 0 && arcs('under2') === 0,
+      dOf('graze'));
+
+    // Angled T-junction: a line ENDING on another is a junction at any angle.
+    t.applyDiagramData(doc(
+      [box('a',100,300),box('b',500,300)],
+      [conn('under3','a','b',2,6), freeConn('tap', 250, 150, 330, 330)]));
+    jumpsBtn().click();
+    ok('an angled T-junction tap never hops', arcs('tap') === 0 && arcs('under3') === 0,
+      dOf('tap'));
+
     // Fresh board resets the flag - a new diagram must not inherit it.
     t.applyDiagramData(doc([box('a',100,300)],[]));
     ok('a board without the field loads with jumps off', !jumpsBtn().classList.contains('active'));
