@@ -504,13 +504,22 @@ function lineJumpSuite(t) {
   const jumpsBtn = () => idoc.getElementById('btn-jumps');
 
   suite('Line jumps', () => {
-    // Crossing pair: horizontal drawn first (under), vertical second (over).
+    // Fresh documents default jumps ON (2026-08-11 decision) - normal users
+    // get them without discovering a button...
+    t.resetDocumentState();
+    ok('a fresh document defaults jumps ON', jumpsBtn().classList.contains('active'));
+
+    // ...but a LEGACY file saved without the field loads OFF, so
+    // deliberately-layered boards keep their drawn look until their author
+    // opts in. Crossing pair: horizontal drawn first (under), vertical
+    // second (over).
     t.applyDiagramData(doc(
       [box('a',100,300),box('b',500,300),box('c',270,150),box('d',270,450)],
       [conn('cu','a','b',2,6), conn('co','c','d',4,0)]));
     const plainOver = dOf('co'), plainUnder = dOf('cu');
-    ok('jumps default OFF: no arcs anywhere', arcs('co') === 0 && arcs('cu') === 0);
-    ok('save at default omits the field', t.serializeDiagram(false).lineJumps === undefined);
+    ok('a fieldless (legacy) board loads jumps OFF: no arcs anywhere',
+      arcs('co') === 0 && arcs('cu') === 0);
+    ok('save with jumps off omits the field', t.serializeDiagram(false).lineJumps === undefined);
 
     jumpsBtn().click();
     ok('the TOP connection hops, exactly once', arcs('co') === 1, dOf('co'));
@@ -545,14 +554,18 @@ function lineJumpSuite(t) {
     t.applyDiagramData(doc([box('a',100,300)],[]));
     ok('a board without the field loads with jumps off', !jumpsBtn().classList.contains('active'));
 
-    // Complex Sample regression: default off = not a single arc on the board
-    // the user actually looks at.
+    // Complex Sample: built fresh, so jumps are ON by default - it renders
+    // its (few) genuine crossings as hops, and toggling off restores every
+    // path to arc-free.
     t.buildComplexSampleDiagram();
-    const anyArc = t.state.connections.some(c => {
+    const arcCount = () => t.state.connections.reduce((n, c) => {
       const el = idoc.getElementById(c.id);
-      return el && /A /.test(el.querySelector('.connection-line').getAttribute('d'));
-    });
-    ok('Complex Sample renders arc-free with jumps off', !anyArc);
+      return n + (el ? (el.querySelector('.connection-line').getAttribute('d').match(/A /g) || []).length : 0);
+    }, 0);
+    ok('Complex Sample builds with jumps ON and hops its crossings',
+      jumpsBtn().classList.contains('active') && arcCount() > 0, arcCount() + ' arcs');
+    jumpsBtn().click();
+    ok('toggling the sample off renders arc-free', arcCount() === 0, arcCount() + ' arcs');
   });
 }
 

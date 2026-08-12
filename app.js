@@ -85,8 +85,10 @@
     // btn-guides, which live in localStorage): boards with deliberately
     // layered connections look wrong with hops, so the choice belongs to the
     // diagram - and it travels in the file so the kiosk draws what the editor
-    // drew. Off by default; existing boards render exactly as before.
-    let LINE_JUMPS = false;
+    // drew. FRESH documents (boot blank board, File New, samples) default ON;
+    // a legacy file saved without the field loads OFF, so boards drawn before
+    // the feature keep their exact look until their author opts in.
+    let LINE_JUMPS = true;
     const AP_RADIUS = 6;
 
     let state = {
@@ -3582,6 +3584,7 @@
 
     // Line jumps: a BOARD property (see LINE_JUMPS), so unlike its neighbours
     // this button writes the document - undoable, dirties, travels in saves.
+    setLineJumps(LINE_JUMPS);   // sync the button with the boot default
     document.getElementById('btn-jumps').addEventListener('click', () => {
         pushUndo();
         setLineJumps(!LINE_JUMPS);
@@ -3640,10 +3643,11 @@
     }
     document.getElementById('btn-minimap').addEventListener('click', () =>
         applyMinimap(minimapEl.style.display === 'none'));
-    // Restore the preference - but never in EMBED/kiosk, where there is no
-    // toolbar to turn it back off.
+    // Default ON (like grid/guides - discoverable by existing, not by
+    // finding a button); '0' preserves a user's opt-out. Never in
+    // EMBED/kiosk, where there is no toolbar to turn it back off.
     try {
-        if (!EMBED && localStorage.getItem('crosscanvas-minimap') === '1') applyMinimap(true);
+        if (!EMBED && localStorage.getItem('crosscanvas-minimap') !== '0') applyMinimap(true);
     } catch (e) { /* ignore */ }
 
     // Click or drag anywhere on the map to move the view there. getScreenCTM
@@ -9546,8 +9550,12 @@
         state.clipboard = null;
         // Board-level routing properties reset with the document - a fresh
         // board must not inherit the previous board's clearance or jumps.
+        // Jumps default ON for NEW boards (normal users should get them
+        // without discovering a button); a legacy file saved without the
+        // field still loads OFF - deliberately-layered boards keep their
+        // drawn look until their author opts in.
         setRouteClearance(ROUTE_CLEARANCE_DEFAULT);
-        setLineJumps(false);
+        setLineJumps(true);
     }
 
     function buildSampleDiagram() {
