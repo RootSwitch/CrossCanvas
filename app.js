@@ -434,6 +434,10 @@
     function moveNodeElement(node) {
         const el = document.getElementById(node.id);
         if (el) el.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+        // A zone's hoisted title (zone-labels-layer) rides the same fast path
+        // as its body; devices/images have no zl- element and skip the branch.
+        const lbl = document.getElementById('zl-' + node.id);
+        if (lbl) lbl.setAttribute('transform', `translate(${node.x}, ${node.y})`);
     }
 
     // Marquee fast path: rubber-banding only changes selection membership, so
@@ -452,6 +456,7 @@
             g.classList.toggle('multi-selected', set.has(g.id));
         }
         for (const g of zonesLayer.children) g.classList.toggle('multi-selected', zones.has(g.id));
+        for (const g of zoneLabelsLayer.children) g.classList.toggle('multi-selected', zones.has(g.dataset.zone));
         for (const g of imagesLayer.children) g.classList.toggle('multi-selected', imgs.has(g.id));
         connectionsLayer.querySelectorAll('path.connection-line').forEach(p =>
             p.classList.toggle('selected', conns.has(p.dataset.connId)));
@@ -528,6 +533,11 @@
     const connectionsLayer = document.getElementById('connections-layer');
     const zonesLayer = document.getElementById('zones-layer');
     const imagesLayer = document.getElementById('images-layer');
+    // Zone TITLES live above connections (zone bodies stay background):
+    // painted in the zones layer, a title sat under every line crossing its
+    // zone, where the label halo could not help - a halo only cuts what is
+    // painted before it. kiosk.html inherits this layer via the sync script.
+    const zoneLabelsLayer = document.getElementById('zone-labels-layer');
     const overlayLayer = document.getElementById('overlay-layer');
 
     // --- Canvas tiers (Layers menu): per-tier visibility & lock ---
@@ -4864,7 +4874,7 @@
         const zoneEl = !deviceEl && !imageEl && !textboxEl ? e.target.closest('.zone-node') : null;
         const connEl = !deviceEl && !imageEl && !textboxEl && !zoneEl ? e.target.closest('.connection-line') : null;
         const targetId = (deviceEl && deviceEl.id) || (imageEl && imageEl.id) || (textboxEl && textboxEl.id) ||
-            (zoneEl && zoneEl.id) || (connEl && connEl.dataset.connId) || null;
+            (zoneEl && zoneIdOf(zoneEl)) || (connEl && connEl.dataset.connId) || null;
 
         const inSelection = targetId && (
             state.selectedDevices.includes(targetId) || state.selectedZones.includes(targetId) ||
@@ -4886,7 +4896,7 @@
                 if (deviceEl) selectDevice(deviceEl.id);
                 else if (imageEl) selectImage(imageEl.id);
                 else if (textboxEl) selectTextBox(textboxEl.id);
-                else if (zoneEl) selectZone(zoneEl.id);
+                else if (zoneEl) selectZone(zoneIdOf(zoneEl));
                 else if (connEl) selectConnection(connEl.dataset.connId);
             }
         } else if (!targetId) {
@@ -5243,7 +5253,7 @@
             // a unit (Shift adds the group to the current selection). Ctrl+click
             // drills into the single member instead ("subselect").
             const clickedNodeId = (deviceEl && deviceEl.id) || (imageEl && imageEl.id) ||
-                (textboxEl && textboxEl.id) || (zoneEl && zoneEl.id) || null;
+                (textboxEl && textboxEl.id) || (zoneEl && zoneIdOf(zoneEl)) || null;
             const clickedGroup = clickedNodeId ? findGroupFor(clickedNodeId) : null;
             if (clickedGroup) {
                 if (e.ctrlKey || e.metaKey) {
@@ -5278,7 +5288,7 @@
             // If clicking on something that's already in the multi-selection, start multi-drag
             if (hasMultiSelection()) {
                 const clickedDeviceId = deviceEl ? deviceEl.id : null;
-                const clickedZoneId = zoneEl ? zoneEl.id : null;
+                const clickedZoneId = zoneEl ? zoneIdOf(zoneEl) : null;
                 const clickedTextBoxId = textboxEl ? textboxEl.id : null;
                 const clickedImageId = imageEl ? imageEl.id : null;
                 const inSelection = (clickedDeviceId && state.selectedDevices.includes(clickedDeviceId)) ||
@@ -5448,7 +5458,7 @@
                     }
                 }
             } else if (zoneEl) {
-                const zone = state.zones.find(z => z.id === zoneEl.id);
+                const zone = state.zones.find(z => z.id === zoneIdOf(zoneEl));
                 if (zone) {
                     preDragSnapshot = snapshotState();
                     if (e.ctrlKey || e.metaKey) {
@@ -5571,7 +5581,7 @@
             if (bodyEl) {
                 const node = deviceEl
                     ? state.devices.find(d => d.id === deviceEl.id)
-                    : state.zones.find(z => z.id === zoneEl.id);
+                    : state.zones.find(z => z.id === zoneIdOf(zoneEl));
                 if (node) {
                     const intent = connectIntentAt(node, point.x, point.y, state.zoom);
                     if (intent.action === 'connect') {
@@ -8072,11 +8082,26 @@
             group.appendChild(cap);
         }
 
+        // The title renders into zone-labels-layer, ABOVE connections, so its
+        // halo can cut lines crossing the zone. It keeps class zone-node and
+        // carries data-zone so every closest('.zone-node') hit path resolves
+        // to the real zone via zoneIdOf - clicking or double-clicking the
+        // title behaves exactly as when it lived inside the zone's own group.
+        const oldLbl = document.getElementById('zl-' + zone.id);
+        if (oldLbl) oldLbl.remove();
         if (zone.label) {
             const zoneObj = Object.assign({}, zone, {
                 fillOpacity: !zone.fontColor ? Math.min(1, zone.opacity + 0.4) : undefined
             });
-            renderMultiLineLabel(group, zoneObj, zone.w, zone.h, zone.borderColor);
+            const lblGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            lblGroup.id = 'zl-' + zone.id;
+            lblGroup.classList.add('zone-node');
+            lblGroup.dataset.zone = zone.id;
+            lblGroup.setAttribute('transform', `translate(${zone.x}, ${zone.y})`);
+            if (state.selectedZone === zone.id) lblGroup.classList.add('selected');
+            if (state.selectedZones.includes(zone.id)) lblGroup.classList.add('multi-selected');
+            renderMultiLineLabel(lblGroup, zoneObj, zone.w, zone.h, zone.borderColor);
+            zoneLabelsLayer.appendChild(lblGroup);
         }
 
         if (zone.attachmentPoints) {
@@ -8126,8 +8151,15 @@
         zonesLayer.appendChild(group);
     }
 
+    // A hoisted title (zl-<id> in zone-labels-layer) or the body group both
+    // count as "the zone" for hit purposes - resolve to the real zone id.
+    function zoneIdOf(el) {
+        return el ? (el.dataset.zone || el.id) : null;
+    }
+
     function renderAllZones() {
         zonesLayer.innerHTML = '';
+        zoneLabelsLayer.innerHTML = '';
         state.zones.forEach(renderZone);
     }
 
@@ -11831,7 +11863,7 @@
         // set stays correct as chrome evolves without a hand-maintained list.
         const reservedIds = new Set();
         document.querySelectorAll('[id]').forEach(el => {
-            if (!el.closest('#devices-layer, #zones-layer, #connections-layer, #images-layer, #overlay-layer, #status-overlay')) {
+            if (!el.closest('#devices-layer, #zones-layer, #zone-labels-layer, #connections-layer, #images-layer, #overlay-layer, #status-overlay')) {
                 reservedIds.add(el.id);
             }
         });

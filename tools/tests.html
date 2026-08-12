@@ -595,9 +595,32 @@ function labelHaloSuite(t) {
     const tbEl = Array.from(idoc.getElementById('ht').querySelectorAll('text'))[0];
     ok('text boxes halo too', tbEl && tbEl.getAttribute('paint-order') === 'stroke' &&
       rgb(tbEl.getAttribute('stroke')) === '255,255,255', tbEl && tbEl.getAttribute('stroke'));
-    const zEl = Array.from(idoc.getElementById('hz').querySelectorAll('text')).pop();
-    ok('zone labels halo in their own fill', zEl && rgb(zEl.getAttribute('stroke')) === '255,224,224',
+    // Zone titles are HOISTED into zone-labels-layer, above connections -
+    // in the zones layer (bottom) the halo could not help, because a halo
+    // only cuts lines painted before it.
+    const zl = idoc.getElementById('zl-hz');
+    ok('zone title lives in zone-labels-layer', !!zl && zl.parentElement.id === 'zone-labels-layer',
+      zl ? zl.parentElement.id : 'zl-hz missing');
+    const zEl = zl && Array.from(zl.querySelectorAll('text')).pop();
+    ok('zone titles halo in their own fill', zEl && rgb(zEl.getAttribute('stroke')) === '255,224,224',
       zEl && zEl.getAttribute('stroke'));
+    const connLayer = idoc.getElementById('connections-layer');
+    ok('title layer paints ABOVE connections',
+      !!(connLayer.compareDocumentPosition(idoc.getElementById('zone-labels-layer')) & Node.DOCUMENT_POSITION_FOLLOWING));
+    ok('the zone group itself no longer carries the title',
+      Array.from(idoc.getElementById('hz').querySelectorAll('text')).length === 0);
+
+    // Clicking the hoisted title must still select its zone (the zl- group
+    // carries class zone-node + data-zone, resolved through zoneIdOf).
+    if (zEl) {
+      const iwin = document.querySelector('iframe').contentWindow;
+      zEl.dispatchEvent(new iwin.MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 }));
+      iwin.dispatchEvent(new iwin.MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 }));
+      ok('clicking the hoisted title selects its zone', t.state.selectedZone === 'hz',
+        'selectedZone=' + t.state.selectedZone);
+    } else {
+      skip('clicking the hoisted title selects its zone', 'no title element');
+    }
   });
 }
 
