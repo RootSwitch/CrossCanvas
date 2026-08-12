@@ -2293,6 +2293,28 @@
                              corners * CORNER_PX + length };
     }
 
+    // Candidates may contain collinear runs - the HV channel shape's exit
+    // stub is collinear with the rail that follows it. Merged at construction:
+    // the drawn geometry is identical, doubling-back candidates stop carrying
+    // phantom length into the score, and - the reason this exists - every
+    // interior segment of a winning skeleton alternates orientation, so every
+    // bend handle it renders can actually absorb its bend. The tell was a
+    // dead first drag handle on dodged horizontal-to-vertical routes (found
+    // connecting IDS/IPS to the Laptop on the Complex Sample): the handle sat
+    // on a rail whose neighbour ran parallel, and applyManualBends rightly
+    // refused the write, forever.
+    function dropCollinear(pts) {
+        const out = [pts[0]];
+        for (let i = 1; i < pts.length - 1; i++) {
+            const a = out[out.length - 1], b = pts[i], c = pts[i + 1];
+            const sameX = Math.abs(a.x - b.x) < 0.01 && Math.abs(b.x - c.x) < 0.01;
+            const sameY = Math.abs(a.y - b.y) < 0.01 && Math.abs(b.y - c.y) < 0.01;
+            if (!(sameX || sameY)) out.push(b);
+        }
+        out.push(pts[pts.length - 1]);
+        return out;
+    }
+
     // Candidate mid-sections mirroring generateWaypoints' three shapes, with
     // the connecting rail slid to fixed offsets plus full detours around the
     // endpoints. Every candidate exits/enters along the AP directions via the
@@ -2303,7 +2325,7 @@
         const s1 = { x: start.x + startDir.dx * offset, y: start.y + startDir.dy * offset };
         const e1 = { x: end.x + endDir.dx * offset, y: end.y + endDir.dy * offset };
         const routes = [];
-        const push = (mid) => routes.push([start, ...mid, end]);
+        const push = (mid) => routes.push(dropCollinear([start, ...mid, end]));
         const RAILS = [-40, 40, -90, 90, -160, 160];
 
         if (startDir.dx !== 0 && endDir.dx !== 0) {

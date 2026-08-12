@@ -463,6 +463,34 @@ function obstacleSuite(t) {
     t.adoptAvoidedSkeleton(cleanConn);
     ok('adoption clears a stale flag on a clean route', cleanConn.bendsOnAvoid === undefined);
 
+    // 5c. DODGED SKELETONS ALTERNATE ORIENTATION, so every bend handle they
+    //     render can absorb its bend. The HV channel candidates used to emit
+    //     an exit stub collinear with the rail after it - the handle on that
+    //     rail wrote bends applyManualBends rightly refused, forever (found
+    //     as a dead first drag handle connecting IDS/IPS to the Laptop).
+    //     Horizontal exit, vertical arrival, blocker in the corridor:
+    doc = twoBoxDoc(100, 200, 600, 500, 2, 0);   // right-center -> top-center
+    doc.devices.push(blocker(320, 215));         // sits on the horizontal leg
+    t.applyDiagramData(doc);
+    const hv = t.state.connections[0];
+    const hvPts = routeOf(t, hv);
+    const orient = [];
+    for (let i = 0; i < hvPts.length - 1; i++) {
+      const dx = Math.abs(hvPts[i].x - hvPts[i+1].x), dy = Math.abs(hvPts[i].y - hvPts[i+1].y);
+      if (dx >= 0.5 || dy >= 0.5) orient.push(dx >= dy ? 'H' : 'V');
+    }
+    ok('a dodged HV skeleton alternates orientation (every handle absorbable)',
+      orient.every((o, i) => i === 0 || o !== orient[i - 1]),
+      orient.join('') + ': ' + JSON.stringify(hvPts));
+    t.adoptAvoidedSkeleton(hv);
+    if (bendOneSegment(t, hv, 1, 25)) {
+      ok('the FIRST drag handle on the dodge is functional',
+        JSON.stringify(routeOf(t, hv)) !== JSON.stringify(hvPts),
+        'bend on segment 1 did not move the route');
+    } else {
+      skip('first handle on the dodge', 'route too short to bend');
+    }
+
     // 6. Vertical corridor variant of case 1 (the other rail branch).
     doc = twoBoxDoc(200, 100, 200, 600, 4, 0);
     doc.devices.push(blocker(200, 320));
