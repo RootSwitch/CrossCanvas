@@ -376,21 +376,52 @@ function obstacleSuite(t) {
     const r2 = JSON.stringify(routeOf(t, t.state.connections[0]));
     ok('avoidance is deterministic', r1 === r2);
 
-    // 4. Bends on an obstacle-adjusted skeleton ride the same guards as any
-    //    other skeleton change: apply when absorbable, skip when not, and
-    //    NEVER produce a diagonal.
+    // 4. HAND-SHAPED ROUTES ARE NOT SECOND-GUESSED. Bends apply after routing,
+    //    so a router that reshapes the skeleton overrules geometry the user
+    //    already drew. The Complex Sample regression: its Access Switch cables
+    //    are bent around the printer by hand, the natural line under them DOES
+    //    cross it, and avoidance sent both out of their zone on a 713px detour
+    //    in place of the drawn 223px one.
     doc = twoBoxDoc(120, 400, 420, 120, 1, 6);
     doc.devices.push(blocker(250, 230));
     t.applyDiagramData(doc);
     const conn = t.state.connections[0];
     if (bendOneSegment(t, conn, 1, 40)) {
+      const bent = JSON.stringify(routeOf(t, conn));
       const bad = orthoOffenders(routeOf(t, conn));
-      ok('a bend over an obstacle-adjusted route stays orthogonal', bad.length === 0, bad.join('; '));
+      ok('a hand-bent route stays orthogonal', bad.length === 0, bad.join('; '));
+      // Move the blocker into the bent route's corridor: the shape must not move.
+      t.state.devices[2].x = 200; t.state.devices[2].y = 250;
+      ok('a hand-bent route is not re-routed when a device lands in its corridor',
+        JSON.stringify(routeOf(t, conn)) === bent, 'the drawn shape changed under the user');
     } else {
-      skip('bend over obstacle-adjusted route', 'route too short to bend');
+      skip('hand-bent route is left alone', 'route too short to bend');
     }
 
-    // 5. Vertical corridor variant of case 1 (the other rail branch).
+    // 5. Hits count DISTINCT DEVICES, not segment-clips. Counting clips made
+    //    the router "improve" a route that clips one device twice by
+    //    lengthening it until only one segment clipped - same device crossed,
+    //    75px further to do it. Pinned via a geometry where no candidate can
+    //    clear the blocker: the route must come back unchanged, not longer.
+    doc = twoBoxDoc(200, 100, 200, 600, 4, 0);
+    doc.devices.push(blocker(170, 300));      // straddles the only corridor
+    doc.devices.push(blocker(280, 300));      // and the obvious way around
+    doc.devices[3].id = 'blk2';
+    t.applyDiagramData(doc);
+    const boxed = t.state.connections[0];
+    const before = routeOf(t, boxed);
+    const beforeLen = before.reduce((L, p, i) =>
+      i ? L + Math.abs(p.x - before[i-1].x) + Math.abs(p.y - before[i-1].y) : 0, 0);
+    // A route with nowhere clean to go must not grow chasing a tie.
+    const after = routeOf(t, boxed);
+    const afterLen = after.reduce((L, p, i) =>
+      i ? L + Math.abs(p.x - after[i-1].x) + Math.abs(p.y - after[i-1].y) : 0, 0);
+    ok('a route with no clean alternative is not lengthened', afterLen <= beforeLen + 0.5,
+      beforeLen + ' -> ' + afterLen);
+    ok('the unavoidable case stays orthogonal', orthoOffenders(after).length === 0,
+      orthoOffenders(after).join('; '));
+
+    // 6. Vertical corridor variant of case 1 (the other rail branch).
     doc = twoBoxDoc(200, 100, 200, 600, 4, 0);
     doc.devices.push(blocker(200, 320));
     t.applyDiagramData(doc);
@@ -399,6 +430,50 @@ function obstacleSuite(t) {
       crossings(pts, t.state.devices[2], 0) + ' crossing(s)');
     ok('vertical avoidance is orthogonal', orthoOffenders(pts).length === 0,
       orthoOffenders(pts).join('; '));
+
+    // 7. Clearance is SOFT - it ranks alternatives the router was already
+    //    choosing between and never triggers a reroute on its own. The first
+    //    cut padded the obstacle boxes and counted a near-miss as a crossing,
+    //    which in a dense zone is nearly every route. Pinned at the extreme:
+    //    a route grazing a device by 1px must not move even at max clearance.
+    doc = twoBoxDoc(100, 200, 600, 200, 2, 6);
+    doc.devices.push(blocker(320, 261));    // 1px below the route's rail
+    t.applyDiagramData(doc);
+    const grazing = JSON.stringify(routeOf(t, t.state.connections[0]));
+    const slider = document.querySelector('iframe').contentDocument.getElementById('route-clearance');
+    slider.value = 40;
+    slider.dispatchEvent(new (document.querySelector('iframe').contentWindow.Event)('input', { bubbles: true }));
+    ok('raising Route Clearance does not re-route a clean board',
+      JSON.stringify(routeOf(t, t.state.connections[0])) === grazing,
+      'a settled route moved when clearance changed');
+    slider.value = 6;
+    slider.dispatchEvent(new (document.querySelector('iframe').contentWindow.Event)('input', { bubbles: true }));
+
+    // 8. THE COMPLEX SAMPLE, end to end: the board the user actually looks at.
+    //    Every route must be byte-identical to the classic router's output and
+    //    no route may cross a device. This is the check that would have caught
+    //    the VoIP/POE excursion before it shipped.
+    t.resetDocumentState && t.resetDocumentState();
+    t.buildComplexSampleDiagram();
+    const all = t.state.devices.slice();
+    let moved = 0, crossed = [];
+    for (const c of t.state.connections) {
+      const s = t.resolveConnEndpoint(c, 'from'), e = t.resolveConnEndpoint(c, 'to');
+      if (!s || !e) continue;
+      const skipIds = new Set([c.fromDevice, c.toDevice]);
+      const now = t.connRoutePoints(c, s, e);
+      t.state.devices = all.filter(d => skipIds.has(d.id));   // no obstacles -> classic route
+      const classic = t.connRoutePoints(c, s, e);
+      t.state.devices = all;
+      if (JSON.stringify(now) !== JSON.stringify(classic)) moved++;
+      for (const d of all) {
+        if (skipIds.has(d.id)) continue;
+        if (crossings(now, d, 0)) { crossed.push((d.label || d.id) + ' on ' + c.id); break; }
+      }
+    }
+    ok('Complex Sample: every route is byte-identical to the classic router', moved === 0,
+      moved + ' of ' + t.state.connections.length + ' routes moved');
+    ok('Complex Sample: no route crosses a device', crossed.length === 0, crossed.join('; '));
   });
 }
 

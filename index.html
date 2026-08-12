@@ -291,6 +291,10 @@
                         <input type="range" id="default-ap-count" min="4" max="16" step="4" value="8">
                     </div>
                     <div class="default-size-control">
+                        <label title="Room the router tries to leave around devices when a connection has to route AROUND one. Only affects connections that would otherwise cross a device - a route that already runs clear never moves.">Route Clearance: <span id="route-clearance-label">6px</span></label>
+                        <input type="range" id="route-clearance" min="0" max="40" step="2" value="6">
+                    </div>
+                    <div class="default-size-control">
                         <label title="Extra horizontal room per device on inventory-CSV import - widen for long hostnames that would otherwise clip into each other">Import Spacing - Wider: <span id="import-hspace-label">100%</span></label>
                         <input type="range" id="import-hspace" min="100" max="250" step="10" value="100">
                     </div>

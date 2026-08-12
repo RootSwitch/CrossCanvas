@@ -72,6 +72,14 @@
     // (fewer only when a zone holds fewer devices), trading depth for width -
     // e.g. 16 turns a 400-row one-site import into a wall instead of a well.
     let IMPORT_MAX_COLS = 0;    // 0 = Auto | 1..24 fixed
+    // How much room the router tries to leave around devices when a connection
+    // has to route AROUND one (see routeScore). Soft: it ranks alternatives the
+    // router was already choosing between and never triggers a reroute on its
+    // own, so raising it cannot make a settled board re-route. Travels in the
+    // file so a board routes identically in the editor, the kiosk and anyone
+    // else's copy - the wall must match what was drawn.
+    let ROUTE_CLEARANCE = 6;
+    const ROUTE_CLEARANCE_DEFAULT = 6;
     const AP_RADIUS = 6;
 
     let state = {
@@ -204,6 +212,18 @@
         });
     }
 
+    // One writer for the router's clearance so the value, the slider and the
+    // label can never disagree - loads, undo and the control itself all land
+    // here. Clamped to the slider's own range: the value comes out of a file.
+    function setRouteClearance(px) {
+        const n = Math.round(Number(px));
+        ROUTE_CLEARANCE = Number.isFinite(n) ? Math.max(0, Math.min(40, n)) : ROUTE_CLEARANCE_DEFAULT;
+        const slider = document.getElementById('route-clearance');
+        if (slider) slider.value = ROUTE_CLEARANCE;
+        const label = document.getElementById('route-clearance-label');
+        if (label) label.textContent = ROUTE_CLEARANCE + 'px';
+    }
+
     function snapshotState() {
         return JSON.stringify({
             devices: state.devices,
@@ -217,7 +237,11 @@
             // an Open/Merge restores the old content under its OWN title -
             // not the newly opened file's name (which Save would then reuse).
             diagramTitle: state.diagramTitle,
-            diagramVersion: state.diagramVersion
+            diagramVersion: state.diagramVersion,
+            // Router clearance is document state (it changes every computed
+            // route), so undo has to carry it or Ctrl+Z would restore the
+            // geometry without the setting that shaped it.
+            routeClearance: ROUTE_CLEARANCE
         }, snapshotReplacer);
     }
 
@@ -259,6 +283,7 @@
             state.diagramVersion = data.diagramVersion || 1;
             updateTitleVersionUI();
         }
+        if (data.routeClearance !== undefined) setRouteClearance(data.routeClearance);
         state.selectedDevice = null;
         state.selectedConnection = null;
         state.selectedZone = null;
@@ -1495,20 +1520,39 @@
         points.push(...generateWaypoints(start, end, startDir, endDir));
         points.push(end);
 
-        // Obstacle-scored selection. The natural route above is candidate #0
-        // and strict comparison keeps it on ties, so a route that crosses no
-        // device is BYTE-IDENTICAL to what this router has always produced -
-        // existing boards, and every manual bend keyed against an uncrossed
-        // natural route, cannot change. Only a route that currently plows
-        // through a third device gets replaced by a scored alternative.
+        // HAND-SHAPED ROUTES ARE NOT SECOND-GUESSED. Bends are applied to this
+        // skeleton afterwards by applyManualBends, so a router that reshapes
+        // the skeleton is overruling geometry the user already authored - and
+        // the bend then re-fits onto a path they never drew. The Complex
+        // Sample is the case in point: its Access Switch cables are bent
+        // around the printer by hand, the natural line underneath them does
+        // cross it, and avoidance sent both cables out of their zone on a
+        // 713px detour in place of the drawn 223px one. Whoever bent the line
+        // has already answered the question avoidance exists to ask.
+        if (conn && conn.bends && Object.keys(conn.bends).length) return points;
+
+        // Obstacle-scored selection - see routeScore for the cost model. A
+        // route is only in trouble if it truly OVERLAPS a device, so a route
+        // that crosses nothing is BYTE-IDENTICAL to what this router has
+        // always produced: existing boards, and every manual bend keyed
+        // against an uncrossed natural route, cannot change.
         const obstacles = routeObstacles(startNode, endNode);
         if (!obstacles.length) return points;
-        const baseCost = routeCost(points, obstacles);
-        if (baseCost < CROSSING_COST) return points;   // zero crossings: done
-        let best = points, bestCost = baseCost;
+        const base = routeScore(points, obstacles);
+        if (!base.hits) return points;                 // nothing crossed: done
+        let best = points, bestScore = base;
         for (const cand of candidateRoutes(start, end, startDir, endDir)) {
-            const cost = routeCost(cand, obstacles);
-            if (cost < bestCost) { bestCost = cost; best = cand; }
+            const sc = routeScore(cand, obstacles);
+            // Two independent bars, both required. FEWER REAL CROSSINGS: a
+            // candidate that merely reshapes the route without clearing a
+            // device is churn, so equal-hit alternatives never win. LOWER
+            // TOTAL COST: with a crossing priced in pixels, a dodge that
+            // costs more detour than the crossing is worth loses to the
+            // crossing - which is what keeps a route from fleeing its zone
+            // when a cramped area has no good way around.
+            if (sc.hits < bestScore.hits && sc.cost < bestScore.cost) {
+                bestScore = sc; best = cand;
+            }
         }
         return best;
     }
@@ -1909,50 +1953,76 @@
     // nothing about the rest of the board, so a natural route routinely ran
     // straight through whatever device sat between them. The selection layer
     // in routeOrthogonal scores a handful of CANDIDATE routes (the natural one
-    // plus slid rails and full detours) against the board's devices: crossings
-    // dominate, then corner count, then length. Candidate scoring rather than
-    // grid pathfinding: deterministic, cheap, and on a board a human laid out,
-    // one of ~10 corridors is almost always clean.
+    // plus slid rails and full detours) against the board's devices and keeps
+    // the cleanest. Candidate scoring rather than grid pathfinding:
+    // deterministic, cheap, and on a board a human laid out one of ~10
+    // corridors is almost always clean.
     //
     // Obstacles are DEVICES only, deliberately: zones are containers a route
     // may legally cross, images are backgrounds (a floorplan MUST be crossed),
     // and text boxes are annotations. The two endpoint devices are excluded -
     // a route necessarily touches both.
     //
-    // When a route changes shape because a device moved into its corridor, a
+    // THE COST IS DENOMINATED IN PIXELS. A crossing is priced at CROSSING_PX
+    // of detour and a near-miss at GRAZE_PX, so "is this dodge worth it?" is
+    // answered by comparable quantities instead of a lexicographic ordering.
+    // The first cut of this used an effectively infinite crossing penalty, and
+    // any detour, however absurd, beat any crossing - on the Complex Sample two
+    // connections fled their zone entirely to take a 713px path in place of a
+    // 223px one. A finite price keeps a cramped area's least-bad route local.
+    //
+    // Clearance is a SOFT term for the same reason. That first cut padded the
+    // obstacle boxes and counted a near-miss as a crossing, which in a dense
+    // zone is nearly every route: the sample's clean 223px route ran 5px from
+    // a printer it never touched, and "avoiding" a device it did not cross is
+    // what sent it across the board. Padding therefore prices clearance among
+    // candidates the router was ALREADY going to choose between, and never
+    // triggers a reroute on its own.
+    //
+    // When a route does change because a device moved into its corridor, a
     // stored bend whose skeleton no longer matches is skipped-not-deleted by
     // the applyManualBends guards, exactly as for any other skeleton change -
     // and comes back when the corridor clears.
-    const CROSSING_COST = 100000;
+    const CROSSING_PX = 400;   // a crossing is worth ~6 device-widths of detour
+    const GRAZE_PX = 60;       // passing inside the clearance band, but clear
+    const CORNER_PX = 40;      // each direction change
 
     function routeObstacles(startNode, endNode) {
-        const pad = 6;
         const out = [];
         for (const d of state.devices) {
             if (startNode && d.id === startNode.id) continue;
             if (endNode && d.id === endNode.id) continue;
-            out.push({ left: d.x - pad, top: d.y - pad,
-                       right: d.x + d.w + pad, bottom: d.y + d.h + pad });
+            out.push({ left: d.x, top: d.y, right: d.x + d.w, bottom: d.y + d.h });
         }
         return out;
     }
 
-    // Axis-aligned segment vs rect: the segment is a degenerate rect, so a
-    // plain overlap test is exact (routes here are always orthogonal).
-    function segCrossesRect(a, b, r) {
+    // Axis-aligned segment vs rect, grown by `pad`: the segment is a
+    // degenerate rect, so a plain overlap test is exact (routes here are
+    // always orthogonal).
+    function segCrossesRect(a, b, r, pad) {
         const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x);
         const y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
-        return x1 < r.right && x2 > r.left && y1 < r.bottom && y2 > r.top;
+        return x1 < r.right + pad && x2 > r.left - pad &&
+               y1 < r.bottom + pad && y2 > r.top - pad;
     }
 
-    function routeCost(pts, obstacles) {
-        let crossings = 0, corners = 0, length = 0;
+    // { hits, cost } - hits counts REAL overlaps only and is what decides
+    // whether a route is in trouble; cost blends hits, near-misses, corners
+    // and length into one pixel-denominated number for ranking.
+    //
+    // Hits are counted PER DEVICE, not per segment. A route that clips one
+    // device with two of its segments still crosses exactly one device to the
+    // person looking at it, and counting the segments made the router "improve"
+    // such a route by lengthening it until only one segment clipped - same
+    // device crossed, 75px further to do it.
+    function routeScore(pts, obstacles) {
+        let hits = 0, grazes = 0, corners = 0, length = 0;
         let prevVert = null;
         for (let i = 0; i < pts.length - 1; i++) {
             const a = pts[i], b = pts[i + 1];
             const dx = Math.abs(a.x - b.x), dy = Math.abs(a.y - b.y);
             length += dx + dy;
-            for (const r of obstacles) { if (segCrossesRect(a, b, r)) crossings++; }
             // Corners: direction changes over non-degenerate segments only -
             // a zero-length segment has no orientation to change from (the
             // same trap naturalSegmentOrientations documents).
@@ -1961,7 +2031,18 @@
             if (prevVert !== null && vert !== prevVert) corners++;
             prevVert = vert;
         }
-        return crossings * CROSSING_COST + corners * 40 + length;
+        for (const r of obstacles) {
+            let hit = false, graze = false;
+            for (let i = 0; i < pts.length - 1 && !hit; i++) {
+                if (segCrossesRect(pts[i], pts[i + 1], r, 0)) hit = true;
+                else if (ROUTE_CLEARANCE > 0 &&
+                         segCrossesRect(pts[i], pts[i + 1], r, ROUTE_CLEARANCE)) graze = true;
+            }
+            if (hit) hits++;
+            else if (graze) grazes++;
+        }
+        return { hits, cost: hits * CROSSING_PX + grazes * GRAZE_PX +
+                             corners * CORNER_PX + length };
     }
 
     // Candidate mid-sections mirroring generateWaypoints' three shapes, with
@@ -6330,6 +6411,24 @@
     document.getElementById('default-ap-count').addEventListener('input', (e) => {
         DEFAULT_AP_COUNT = parseInt(e.target.value);
         document.getElementById('default-ap-label').textContent = DEFAULT_AP_COUNT;
+    });
+    // Router clearance. Applies to the CURRENT board (routes are computed, not
+    // stored), so re-render and re-fit every bend against the new geometry the
+    // same way an AP-count change does.
+    document.getElementById('route-clearance').addEventListener('input', (e) => {
+        const olds = new Map();
+        state.connections.forEach(c => {
+            const s = resolveConnEndpoint(c, 'from'), en = resolveConnEndpoint(c, 'to');
+            if (s && en) olds.set(c.id, connRoutePoints(c, s, en));
+        });
+        ROUTE_CLEARANCE = parseInt(e.target.value);
+        document.getElementById('route-clearance-label').textContent = ROUTE_CLEARANCE + 'px';
+        olds.forEach((pts, id) => {
+            const c = state.connections.find(x => x.id === id);
+            if (c) refitBendsToPath(c, pts);
+        });
+        renderAll();
+        setDirty(true);
     });
     // Inventory-CSV import spacing (applies to the NEXT import)
     document.getElementById('import-hspace').addEventListener('input', (e) => {
@@ -11603,6 +11702,9 @@
             if (!isNaN(n)) maxTmplNum = Math.max(maxTmplNum, n);
         });
         state.nextId = Math.max(data.nextId || 1, maxTmplNum + 1);
+        // A board without the field predates it (or was saved at the default) -
+        // fall back to the default rather than inheriting the previous board's.
+        setRouteClearance(data.routeClearance !== undefined ? data.routeClearance : ROUTE_CLEARANCE_DEFAULT);
         state.groups = Array.isArray(data.groups)
             ? data.groups.filter(g => g && Array.isArray(g.members)).map(g => ({ id: g.id || genId(), members: g.members.slice() }))
             : [];
@@ -12554,6 +12656,11 @@
             savedAt: new Date().toISOString(),
             diagramTitle: state.diagramTitle || 'network-diagram',
             diagramVersion: state.diagramVersion,
+            // Routes are computed, not stored, so the router's clearance has
+            // to travel with the board or the same file would route one way in
+            // the editor and another on the wall. Omitted at the default so
+            // existing files stay byte-identical through a round trip.
+            ...(ROUTE_CLEARANCE !== ROUTE_CLEARANCE_DEFAULT ? { routeClearance: ROUTE_CLEARANCE } : {}),
             devices: state.devices.map(d => Object.assign({}, d, { image: ref(d.image), originalImage: ref(d.originalImage) })),
             connections: state.connections,
             zones: state.zones,
