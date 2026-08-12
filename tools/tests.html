@@ -304,6 +304,7 @@ async function run(t) {
   routingSuite(t);
   obstacleSuite(t);
   lineJumpSuite(t);
+  labelHaloSuite(t);
   labelSlideSuite(t);
   connectIntentSuite(t);
   await clipboardSuite(t);
@@ -551,6 +552,52 @@ function lineJumpSuite(t) {
       return el && /A /.test(el.querySelector('.connection-line').getAttribute('d'));
     });
     ok('Complex Sample renders arc-free with jumps off', !anyArc);
+  });
+}
+
+// --- label halo ------------------------------------------------------------
+// Every device/zone/image/text-box label strokes a halo behind its glyphs in
+// the color of whatever surface it sits on (canvas, zone fill, or the node's
+// own face for inside positions). A halo in the exact surface color is
+// invisible until a connection runs behind the text - so it is always on,
+// with no toggle and NO file-format field. These tests pin the color
+// resolution; the render-only nature means round-trip suites already prove
+// saves are untouched.
+function labelHaloSuite(t) {
+  const idoc = document.querySelector('iframe').contentDocument;
+  const AP = (w,h) => [{rx:w/2,ry:0},{rx:w,ry:0},{rx:w,ry:h/2},{rx:w,ry:h},{rx:w/2,ry:h},{rx:0,ry:h},{rx:0,ry:h/2},{rx:0,ry:0}];
+  const box = (id,x,y,extra) => Object.assign({ id, x, y, w:60, h:60, label:id, labelPosition:'bottom',
+    fontSize:14, fontColor:'#333333', tintColor:null, spans:[[{text:id,bold:false,italic:false}]],
+    lineFormats:[{bold:false,italic:false}], attachmentPoints:AP(60,60), fields:{} }, extra || {});
+  const labelTexts = id => Array.from(idoc.getElementById(id).querySelectorAll('text'))
+    .filter(el => !el.classList.contains('ap-label'));
+  const halo = id => { const els = labelTexts(id); return els.length ? els[els.length-1].getAttribute('stroke') : null; };
+  const rgb = s => { const m = (s||'').match(/\d+/g); return m ? m.map(Number).join(',') : s; };
+
+  t.applyDiagramData({ version:6, diagramTitle:'halo-test', diagramVersion:1,
+    devices:[ box('h1', 100, 100),
+              box('h2', 400, 130),                              // inside the zone below
+              box('h3', 100, 400, { labelPosition:'center' }),
+              box('h4', 400, 400, { labelPosition:'center', iconBg:'#223344' }) ],
+    connections:[], zones:[ { id:'hz', x:340, y:60, w:220, h:200, fill:'#ffe0e0', opacity:1,
+      borderColor:'#aa4444', label:'Halo Zone', labelPosition:'top-inside', shape:'rect' } ],
+    textBoxes:[ { id:'ht', x:600, y:100, text:'halo tb', spans:[[{text:'halo tb',bold:false,italic:false}]],
+      fontSize:20, fontColor:'#333333' } ],
+    images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:60 });
+
+  suite('Label halo', () => {
+    ok('canvas label halos in the canvas color', rgb(halo('h1')) === '255,255,255', halo('h1'));
+    ok('a label inside a zone halos in the ZONE fill', rgb(halo('h2')) === '255,224,224', halo('h2'));
+    ok('a center label halos in the device FACE', rgb(halo('h3')) === '255,254,254', halo('h3'));
+    ok('a custom face color carries into its halo', (halo('h4')||'').toLowerCase() === '#223344', halo('h4'));
+    const el = labelTexts('h1')[0];
+    ok('halo strokes BEHIND the glyphs (paint-order)', el.getAttribute('paint-order') === 'stroke');
+    const tbEl = Array.from(idoc.getElementById('ht').querySelectorAll('text'))[0];
+    ok('text boxes halo too', tbEl && tbEl.getAttribute('paint-order') === 'stroke' &&
+      rgb(tbEl.getAttribute('stroke')) === '255,255,255', tbEl && tbEl.getAttribute('stroke'));
+    const zEl = Array.from(idoc.getElementById('hz').querySelectorAll('text')).pop();
+    ok('zone labels halo in their own fill', zEl && rgb(zEl.getAttribute('stroke')) === '255,224,224',
+      zEl && zEl.getAttribute('stroke'));
   });
 }
 

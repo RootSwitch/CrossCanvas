@@ -1238,6 +1238,42 @@
     // near-black to white only helps when the surface behind is dark, and
     // imported diagrams lay their own LIGHT zone fills over the canvas
     // (white-on-pale is as unreadable as black-on-dark).
+    // The actual composited surface color under a canvas point: the canvas
+    // background (read from the live #canvas-bg so every theme and mode is
+    // truthful) with each zone containing the point blended over it in paint
+    // order. This is what label halos stroke in - a halo in the exact surface
+    // color is invisible until a connection passes behind the text, at which
+    // point the glyphs cut a clean channel through the line (the cartography
+    // trick every road map uses). Devices/images are deliberately NOT
+    // sampled: a label over a floorplan image gets the canvas-colored halo,
+    // which is exactly how map labels read over imagery.
+    let canvasFillCache = null;   // { key, rgb } - cleared on theme/mode change
+    function canvasBaseRGB() {
+        const key = document.body.classList.contains('dark-mode') ? 'd' : 'l';
+        if (canvasFillCache && canvasFillCache.key === key) return canvasFillCache.rgb;
+        let rgb = key === 'd' ? [42, 42, 62] : [255, 255, 255];
+        const bg = document.getElementById('canvas-bg');
+        if (bg) {
+            const parsed = parseColorToRGB(getComputedStyle(bg).fill || '');
+            if (parsed) rgb = parsed;
+        }
+        canvasFillCache = { key, rgb };
+        return rgb;
+    }
+    function surfaceColorAt(x, y) {
+        let [r, g, b] = canvasBaseRGB();
+        state.zones.forEach(z => {
+            if (x < z.x || x > z.x + z.w || y < z.y || y > z.y + z.h) return;
+            const rgb = parseColorToRGB(z.fill || '#e8f4fd');
+            if (!rgb) return;
+            const a = z.opacity != null ? z.opacity : 1;
+            r = rgb[0] * a + r * (1 - a);
+            g = rgb[1] * a + g * (1 - a);
+            b = rgb[2] * a + b * (1 - a);
+        });
+        return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+    }
+
     function surfaceIsDarkAt(x, y) {
         if (!document.body.classList.contains('dark-mode')) return false;
         let r = 42, g = 42, b = 62;                     // #2a2a3e dark canvas
@@ -1263,7 +1299,7 @@
         return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
     }
 
-    function renderMultiLineLabel(group, obj, w, h, colorFallback, adaptiveDark) {
+    function renderMultiLineLabel(group, obj, w, h, colorFallback, adaptiveDark, faceColor) {
         const label = obj.label || '';
         if (!label) return;
         const spans = obj.spans || [[{ text: label, bold: false, italic: false }]];
@@ -1276,6 +1312,16 @@
         const vOffset = getVAlignOffset(valign, spans.length, lineHeight);
         const adaptive = adaptiveDark && isDark(fillColor) &&
             surfaceIsDarkAt((obj.x || 0) + anchor.x, (obj.y || 0) + anchor.y);
+
+        // Label halo (see surfaceColorAt): stroke behind the glyphs in the
+        // color of whatever the label sits on. Inside positions sit on the
+        // node's own face, so the caller supplies that; everything else
+        // samples the board. Invisible until a connection runs behind the
+        // text - no toggle, no format field, nothing to configure.
+        const inside = pos === 'center' || pos === 'top-inside' || pos === 'bottom-inside';
+        const halo = (inside && faceColor) ? faceColor
+            : surfaceColorAt((obj.x || 0) + anchor.x, (obj.y || 0) + anchor.y);
+        const haloW = Math.min(5, Math.max(2.5, fs * 0.18));
 
         // Explicit justification re-anchors lines inside the block; only worth
         // measuring for multi-line labels (a single line can't be justified).
@@ -1294,6 +1340,10 @@
             text.setAttribute('font-size', fs);
             if (ff) text.setAttribute('font-family', ff);
             text.setAttribute('fill', fillColor);
+            text.setAttribute('paint-order', 'stroke');
+            text.setAttribute('stroke', halo);
+            text.setAttribute('stroke-width', haloW);
+            text.setAttribute('stroke-linejoin', 'round');
             if (adaptive) text.classList.add('device-label-adaptive');
             if (obj.fillOpacity != null) text.setAttribute('fill-opacity', obj.fillOpacity);
             lineSpans.forEach(span => {
@@ -1369,7 +1419,8 @@
         group.appendChild(selOutline);
 
         if (device.label) {
-            renderMultiLineLabel(group, device, device.w, device.h, '#333', true);
+            renderMultiLineLabel(group, device, device.w, device.h, '#333', true,
+                device.iconBg || 'rgb(255,254,254)');   // inside labels sit on the face
         }
 
         device.attachmentPoints.forEach((ap, i) => {
@@ -1482,6 +1533,10 @@
         const tbColor = tb.fontColor || '#333333';
         const tbFill = (isDark(tbColor) &&
             surfaceIsDarkAt(tb.x + boxW / 2, tb.y + boxH / 2)) ? '#ffffff' : tbColor;
+        // Same label halo as device labels (see renderMultiLineLabel) - text
+        // boxes are the user's own fix for crowded spots, so they need it most.
+        const tbHalo = surfaceColorAt(tb.x + boxW / 2, tb.y + boxH / 2);
+        const tbHaloW = Math.min(5, Math.max(2.5, fs * 0.18));
 
         spans.forEach((lineSpans, i) => {
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -1494,6 +1549,10 @@
             text.setAttribute('font-size', fs);
             if (tbff) text.setAttribute('font-family', tbff);
             text.setAttribute('fill', tbFill);
+            text.setAttribute('paint-order', 'stroke');
+            text.setAttribute('stroke', tbHalo);
+            text.setAttribute('stroke-width', tbHaloW);
+            text.setAttribute('stroke-linejoin', 'round');
             text.setAttribute('text-anchor', align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start');
             text.style.pointerEvents = 'none';
             lineSpans.forEach(span => {
@@ -7171,6 +7230,10 @@
     }
     function applyTheme(key, persist = true) {
         const t = THEMES[key] || THEMES.classic;
+        // Theme vars change the canvas color without touching the body class,
+        // so the halo's cached canvas fill must not outlive them (the
+        // dark-mode toggle self-invalidates - its cache key IS the class).
+        canvasFillCache = null;
         // Recorded FIRST: the per-control Reset buttons restore the ACTIVE
         // theme's seed (classic values only when the seed is null), so the
         // classic branch below can safely reuse the reset buttons.
