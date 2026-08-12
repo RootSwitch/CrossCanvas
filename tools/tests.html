@@ -307,6 +307,8 @@ async function run(t) {
   labelHaloSuite(t);
   minimapSuite(t);
   apCapSuite(t);
+  floatingEndpointSuite(t);
+  recolorKeepSuite(t);
   labelSlideSuite(t);
   connectIntentSuite(t);
   await clipboardSuite(t);
@@ -750,6 +752,127 @@ function apCapSuite(t) {
     ok('every scaled AP stays on the shrunken perimeter box',
       zone.attachmentPoints.every(ap => ap.rx >= -0.01 && ap.rx <= 100.01 && ap.ry >= -0.01 && ap.ry <= 100.01));
     t.state.selectedZone = null;
+  });
+}
+
+// --- floating endpoints ----------------------------------------------------
+// A pinned endpoint stores the AP index you drew it on, forever. A FLOATING
+// endpoint (fromFloating/toFloating) belongs to the DEVICE: resolveConnEndpoint
+// re-picks the most central AP on the side facing the other end, every
+// resolve, and writes the choice back into fromAP/toAP - so every consumer
+// (and an older build loading the file) reads a true index. Drop on an AP
+// dot = pinned; drop on the body = floating.
+function floatingEndpointSuite(t) {
+  const AP = (w,h) => [{rx:w/2,ry:0},{rx:w,ry:0},{rx:w,ry:h/2},{rx:w,ry:h},{rx:w/2,ry:h},{rx:0,ry:h},{rx:0,ry:h/2},{rx:0,ry:0}];
+  const box = (id,x,y) => ({ id, x, y, w:60, h:60, label:id, labelPosition:'bottom', fontSize:14,
+    fontColor:'#333333', tintColor:null, spans:[[{text:id,bold:false,italic:false}]],
+    lineFormats:[{bold:false,italic:false}], attachmentPoints:AP(60,60), fields:{} });
+  const mkDoc = (bx, by, extra) => ({ version:6, diagramTitle:'float', diagramVersion:1,
+    devices:[box('a',300,300), box('b',bx,by)],
+    connections:[Object.assign({ id:'fc', fromDevice:'a', fromAP:2, toDevice:'b', toAP:6,
+      routing:'rounded', color:'#333', thickness:2, dash:'solid', label:'', labelPosition:'top',
+      labelVAlign:'top', fontSize:14, fontColor:'#333', lineFormats:[], spans:[],
+      startArrow:'none', endArrow:'none', annotations:[] }, extra || {})],
+    zones:[], textBoxes:[], images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:9 });
+
+  suite('Floating endpoints', () => {
+    // Side selection: standard 8-AP layout, side midpoints are 0/2/4/6.
+    const a = box('a', 300, 300);
+    ok('facing right picks AP 2', t.floatingAPIndex(a, {x:600,y:330}) === 2);
+    ok('facing left picks AP 6',  t.floatingAPIndex(a, {x:0,y:330}) === 6);
+    ok('facing up picks AP 0',    t.floatingAPIndex(a, {x:330,y:0}) === 0);
+    ok('facing down picks AP 4',  t.floatingAPIndex(a, {x:330,y:700}) === 4);
+
+    // The endpoint re-lands as the far device orbits: same file, only B moves.
+    const landings = [];
+    for (const [bx,by] of [[600,300],[300,600],[20,300],[300,20]]) {
+      t.applyDiagramData(mkDoc(bx, by, { toFloating: true, fromFloating: true }));
+      const c = t.state.connections[0];
+      t.resolveConnEndpoint(c, 'from'); t.resolveConnEndpoint(c, 'to');
+      landings.push(c.fromAP + '>' + c.toAP);
+    }
+    ok('floating ends re-land on the facing sides as B orbits A',
+      landings.join(' ') === '2>6 4>0 6>2 0>4', landings.join(' '));
+
+    // Both-floating resolves via centers - no recursion, still orthogonal.
+    t.applyDiagramData(mkDoc(600, 480, { toFloating: true, fromFloating: true }));
+    const c2 = t.state.connections[0];
+    const s2 = t.resolveConnEndpoint(c2,'from'), e2 = t.resolveConnEndpoint(c2,'to');
+    const bad = orthoOffenders(t.connRoutePoints(c2, s2, e2));
+    ok('a both-floating route stays orthogonal', bad.length === 0, bad.join('; '));
+
+    // Write-through + serialization: the flag rides the save, the cached AP
+    // is a true index (older builds load it as a sensible pinned endpoint).
+    const saved = t.serializeDiagram(false);
+    const sc = saved.connections[0];
+    ok('the floating flags serialize', sc.fromFloating === true && sc.toFloating === true);
+    ok('the cached AP index serializes alongside (old-build degradation)',
+      typeof sc.fromAP === 'number' && typeof sc.toAP === 'number');
+    // A pinned connection must carry no flag at all (undefined never
+    // survives JSON).
+    t.applyDiagramData(mkDoc(600, 300));
+    const pinned = JSON.parse(JSON.stringify(t.serializeDiagram(false))).connections[0];
+    ok('pinned connections carry no floating fields',
+      !('fromFloating' in pinned) && !('toFloating' in pinned));
+
+    // Pinned endpoints never re-land: same orbit, APs stay exactly as drawn.
+    const pinnedLandings = [];
+    for (const [bx,by] of [[600,300],[300,600],[20,300]]) {
+      t.applyDiagramData(mkDoc(bx, by));
+      const c = t.state.connections[0];
+      t.resolveConnEndpoint(c, 'from'); t.resolveConnEndpoint(c, 'to');
+      pinnedLandings.push(c.fromAP + '>' + c.toAP);
+    }
+    ok('pinned endpoints stay on their drawn APs', pinnedLandings.join(' ') === '2>6 2>6 2>6',
+      pinnedLandings.join(' '));
+  });
+}
+
+// --- recolor keeps meaningful colors ---------------------------------------
+// Recolor-to-theme distinguishes SKIN from INFORMATION: neutral (grey/black/
+// white) connection and label colors are default ink and snap to the theme;
+// chromatic ones (a red 10Gb uplink, a colored callout) are the diagram's
+// legend and survive. keepMeaningful: false restores snap-everything.
+function recolorKeepSuite(t) {
+  const AP = (w,h) => [{rx:w/2,ry:0},{rx:w,ry:0},{rx:w,ry:h/2},{rx:w,ry:h},{rx:w/2,ry:h},{rx:0,ry:h},{rx:0,ry:h/2},{rx:0,ry:0}];
+  const box = (id,x,y,fontColor) => ({ id, x, y, w:60, h:60, label:id, labelPosition:'bottom',
+    fontSize:14, fontColor, tintColor:null, spans:[[{text:id,bold:false,italic:false}]],
+    lineFormats:[{bold:false,italic:false}], attachmentPoints:AP(60,60), fields:{} });
+  const conn = (id,a,b,color) => ({ id, fromDevice:a, fromAP:2, toDevice:b, toAP:6, color,
+    thickness:2, dash:'solid', routing:'rounded', label:'', labelPosition:'top', labelVAlign:'top',
+    fontSize:14, fontColor:'#333333', lineFormats:[], spans:[], startArrow:'none', endArrow:'none', annotations:[] });
+  const load = () => t.applyDiagramData({ version:6, diagramTitle:'keep', diagramVersion:1,
+    devices:[box('a',100,100,'#333333'), box('b',400,100,'#cc2222')],
+    connections:[conn('grey','a','b','#666666'), conn('red','a','b','#cc2222')],
+    zones:[], textBoxes:[{ id:'tb1', x:100, y:300, text:'note', fontSize:16, fontColor:'#1a7a33',
+      spans:[[{text:'note',bold:false,italic:false}]] },
+      { id:'tb2', x:100, y:360, text:'plain', fontSize:16, fontColor:'#333333',
+        spans:[[{text:'plain',bold:false,italic:false}]] }],
+    images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:9 });
+  const themeConn = t.consts().DEFAULT_CONN_COLOR;
+  const themeFont = t.consts().DEFAULT_FONT_COLOR;
+
+  suite('Recolor keeps meaningful colors', () => {
+    load();
+    t.recolorAllToTheme({ silent: true });
+    ok('a grey connection snaps to the theme ink',
+      t.state.connections[0].color === themeConn, t.state.connections[0].color);
+    ok('a RED connection survives (legend information)',
+      t.state.connections[1].color === '#cc2222', t.state.connections[1].color);
+    ok('a neutral device label follows the theme',
+      t.state.devices[0].fontColor === themeFont, t.state.devices[0].fontColor);
+    ok('a chromatic device label survives',
+      t.state.devices[1].fontColor === '#cc2222', t.state.devices[1].fontColor);
+    ok('a chromatic text box survives, a plain one follows',
+      t.state.textBoxes[0].fontColor === '#1a7a33' && t.state.textBoxes[1].fontColor === themeFont);
+
+    // Opting out restores the historical snap-absolutely-everything.
+    load();
+    t.recolorAllToTheme({ silent: true, keepMeaningful: false });
+    ok('keepMeaningful: false snaps even the red connection',
+      t.state.connections[1].color === themeConn, t.state.connections[1].color);
+    ok('keepMeaningful: false snaps the chromatic label too',
+      t.state.devices[1].fontColor === themeFont);
   });
 }
 

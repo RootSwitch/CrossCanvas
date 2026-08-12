@@ -1326,6 +1326,13 @@ body.dark-mode .context-sep { background: rgba(255, 255, 255, 0.12); }
     cursor: grab;
 }
 
+/* Floating endpoint: hollow - it belongs to the device, not to the
+   specific AP it is currently landing on. */
+.conn-endpoint-handle.conn-endpoint-floating {
+    fill: white;
+    stroke: var(--se-tint);
+}
+
 .conn-endpoint-handle:hover {
     fill: #ff4444;
 }

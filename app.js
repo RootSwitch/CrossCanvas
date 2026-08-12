@@ -1134,16 +1134,72 @@
         return attachmentPoints.length - 1;
     }
 
+    // Which AP a FLOATING endpoint should land on right now: the most central
+    // AP on the side facing `toward`. Side first (deltas normalized by
+    // half-extents so wide boxes prefer left/right), then nearest AP to that
+    // side's midpoint - stable per side, so small moves of the far end never
+    // flicker the landing between adjacent APs; it only changes when the
+    // facing SIDE changes. On the standard 8-AP layout the side midpoints ARE
+    // APs 0/2/4/6; dense or imported AP sets get their most-central point.
+    function floatingAPIndex(node, toward) {
+        const aps = node.attachmentPoints || [];
+        if (!toward || !aps.length) return null;
+        const nx = (toward.x - (node.x + node.w / 2)) / Math.max(node.w / 2, 1);
+        const ny = (toward.y - (node.y + node.h / 2)) / Math.max(node.h / 2, 1);
+        let mx, my;
+        if (Math.abs(nx) >= Math.abs(ny)) { mx = nx >= 0 ? node.w : 0; my = node.h / 2; }
+        else { mx = node.w / 2; my = ny >= 0 ? node.h : 0; }
+        let best = 0, bd = Infinity;
+        aps.forEach((ap, i) => {
+            const d = (ap.rx - mx) ** 2 + (ap.ry - my) ** 2;
+            if (d < bd) { bd = d; best = i; }
+        });
+        return best;
+    }
+
+    // What a floating endpoint aims at: the other end's pinned AP or free
+    // point - or, when BOTH ends float, the other node's CENTER, which breaks
+    // the circularity without recursion (each side resolves independently).
+    function floatingTargetFor(conn, end) {
+        const otherId = end === 'from' ? conn.toDevice : conn.fromDevice;
+        const otherPt = end === 'from' ? conn.toPoint : conn.fromPoint;
+        const otherFloating = end === 'from' ? conn.toFloating : conn.fromFloating;
+        if (otherId) {
+            const other = findNode(otherId);
+            if (other) {
+                if (otherFloating) return { x: other.x + other.w / 2, y: other.y + other.h / 2 };
+                return getAbsoluteAP(other, end === 'from' ? conn.toAP : conn.fromAP);
+            }
+        }
+        return otherPt || null;
+    }
+
     // A connection end is either anchored to a node attachment point
     // (fromDevice/fromAP) or free-floating (fromPoint). Resolve to an absolute
     // {x,y}, or null if it can't be resolved (deleted node and no point).
+    //
+    // FLOATING endpoints (fromFloating/toFloating) re-pick their AP here, on
+    // every resolve, and WRITE THE CHOICE BACK into fromAP/toAP. The
+    // write-through is what keeps every other consumer - endpoint handles,
+    // AP re-snap on count changes, and the save file itself - reading a true
+    // index. It is also the graceful-degradation story: an older build
+    // loading a floating board simply renders the last-chosen AP, pinned.
     function resolveConnEndpoint(conn, end) {
         const devId = end === 'from' ? conn.fromDevice : conn.toDevice;
-        const apIdx = end === 'from' ? conn.fromAP : conn.toAP;
+        let apIdx = end === 'from' ? conn.fromAP : conn.toAP;
         const pt = end === 'from' ? conn.fromPoint : conn.toPoint;
         if (devId) {
             const node = findNode(devId);
-            if (node) return getAbsoluteAP(node, apIdx);
+            if (node) {
+                if (end === 'from' ? conn.fromFloating : conn.toFloating) {
+                    const idx = floatingAPIndex(node, floatingTargetFor(conn, end));
+                    if (idx != null) {
+                        if (end === 'from') conn.fromAP = idx; else conn.toAP = idx;
+                        apIdx = idx;
+                    }
+                }
+                return getAbsoluteAP(node, apIdx);
+            }
         }
         return pt ? { x: pt.x, y: pt.y } : null;
     }
@@ -2834,14 +2890,18 @@
             });
         }
 
-        // Endpoint handles - drag to re-attach the connection to a different AP
+        // Endpoint handles - drag to re-attach the connection to a different AP.
+        // A FLOATING endpoint draws hollow: it belongs to the device, not to
+        // the specific point it happens to be landing on right now.
         if (state.selectedConnection === conn.id) {
-            [{ which: 'from', p: start }, { which: 'to', p: end }].forEach(ep => {
+            [{ which: 'from', p: start, floats: conn.fromFloating },
+             { which: 'to', p: end, floats: conn.toFloating }].forEach(ep => {
                 const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 handle.setAttribute('cx', ep.p.x);
                 handle.setAttribute('cy', ep.p.y);
                 handle.setAttribute('r', 7);
                 handle.classList.add('conn-endpoint-handle');
+                if (ep.floats) handle.classList.add('conn-endpoint-floating');
                 handle.dataset.connId = conn.id;
                 handle.dataset.end = ep.which;
                 connGroup.appendChild(handle);
@@ -6219,9 +6279,12 @@
             const de = state.draggingEndpoint;
             const conn = de.conn;
             const apEl = e.target.closest('.attachment-point');
-            // An AP dot under the cursor wins; otherwise a node body attaches
-            // to its nearest AP (same behavior as drawing a new connection).
-            let devId = null, apIdx = null;
+            // An AP dot under the cursor = PINNED to that exact point; a node
+            // body = FLOATING, so the router re-picks the facing side on every
+            // reroute. (Body drops used to pin to the nearest AP, which a
+            // slightly-off cursor could put on the FAR side of the object -
+            // behavior nobody deliberately wants.)
+            let devId = null, apIdx = null, floated = false;
             if (apEl) {
                 devId = apEl.dataset.deviceId;
                 apIdx = parseInt(apEl.dataset.apIndex);
@@ -6229,7 +6292,10 @@
                 const bodyNode = findNodeForPoint(point);
                 if (bodyNode) {
                     devId = bodyNode.id;
-                    apIdx = nearestAPIndex(bodyNode, point.x, point.y);
+                    floated = true;
+                    const toward = resolveConnEndpoint(conn, de.end === 'from' ? 'to' : 'from');
+                    const idx = floatingAPIndex(bodyNode, toward);
+                    apIdx = idx != null ? idx : nearestAPIndex(bodyNode, point.x, point.y);
                 }
             }
             if (devId != null) {
@@ -6256,8 +6322,10 @@
                     }
                     if (de.end === 'from') {
                         conn.fromDevice = devId; conn.fromAP = apIdx; conn.fromPoint = null;
+                        if (floated) conn.fromFloating = true; else delete conn.fromFloating;
                     } else {
                         conn.toDevice = devId; conn.toAP = apIdx; conn.toPoint = null;
+                        if (floated) conn.toFloating = true; else delete conn.toFloating;
                     }
                     delete conn.waypoints;
                     if (oldPts) refitBendsToPath(conn, oldPts);
@@ -6269,8 +6337,10 @@
                 const p = { x: snapToGrid(point.x, fineStep), y: snapToGrid(point.y, fineStep) };
                 if (de.end === 'from') {
                     conn.fromDevice = null; conn.fromAP = null; conn.fromPoint = p;
+                    delete conn.fromFloating;
                 } else {
                     conn.toDevice = null; conn.toAP = null; conn.toPoint = p;
+                    delete conn.toFloating;
                 }
                 delete conn.bends;
                 delete conn.waypoints;
@@ -6377,10 +6447,13 @@
             // all. Ctrl/Cmd has no meaning at connect-drop, so it is additive.
             const noSnap = e.ctrlKey || e.metaKey;
 
-            // Resolve the "to" end: an attachment point under the cursor, else a
-            // node body (snap to its nearest AP, so drops don't have to land on
-            // the small dots), else a free-floating point in empty space.
-            let toDevice = null, toAP = null, toPoint = null;
+            // Resolve the "to" end: an attachment point under the cursor is
+            // PINNED to that exact point; a node body is FLOATING - the router
+            // re-picks the facing side on every reroute (aiming at a dot means
+            // that dot; aiming at the thing means "connect to it sensibly");
+            // empty space is a free-floating point.
+            const startCoord = connectingStartPoint();
+            let toDevice = null, toAP = null, toPoint = null, toFloats = false;
             if (noSnap) {
                 toPoint = { x: snapToGrid(point.x, fineStep), y: snapToGrid(point.y, fineStep) };
             } else if (apEl) {
@@ -6390,13 +6463,13 @@
                 const bodyNode = findNodeForPoint(point);
                 if (bodyNode) {
                     toDevice = bodyNode.id;
-                    toAP = nearestAPIndex(bodyNode, point.x, point.y);
+                    toFloats = true;
+                    const idx = floatingAPIndex(bodyNode, startCoord);
+                    toAP = idx != null ? idx : nearestAPIndex(bodyNode, point.x, point.y);
                 } else {
                     toPoint = { x: snapToGrid(point.x, fineStep), y: snapToGrid(point.y, fineStep) };
                 }
             }
-
-            const startCoord = connectingStartPoint();
             const endCoord = toPoint || (toDevice ? getAbsoluteAP(findNode(toDevice), toAP) : null);
 
             let valid = !!(startCoord && endCoord);
@@ -6416,6 +6489,8 @@
                     toDevice: toDevice,
                     toAP: toDevice ? toAP : null,
                     toPoint: toPoint,
+                    // undefined never serializes: pinned connections carry no flag
+                    toFloating: (toDevice && toFloats) ? true : undefined,
                     color: document.getElementById('conn-color').value,
                     thickness: parseInt(document.getElementById('conn-thickness').value),
                     dash: document.getElementById('conn-dash').value,
@@ -7405,19 +7480,40 @@
     // Color, Zone Border. Themes normally only affect newly created objects;
     // this is the "apply it to what's already here" escape hatch (undoable).
     // Device Background and zone opacity are left alone (not theme-seeded).
-    // opts = { devices, zones, connections, textBoxes } - each defaults TRUE, so
-    // recolorAllToTheme() with no args stays "recolor everything" (the ?recolor=1
-    // demo-link path and any headless caller are unchanged). The interactive
-    // Bulk Actions button and batch convert pass a subset so a user can keep,
-    // say, link-speed color coding or hand-tuned zone colors (recolorScopeDialog).
+    // opts = { devices, zones, connections, textBoxes, keepMeaningful } - the
+    // kinds each default TRUE ("recolor everything"); keepMeaningful also
+    // defaults TRUE, so chromatic connection/label colors (a red 10Gb uplink,
+    // a colored callout) survive as information while neutral ink follows the
+    // theme - including for the ?recolor=1 demo path and embedders' theme
+    // rotation, where preserving a board's legend across rotations is the
+    // right default. The interactive Bulk Actions button and batch convert
+    // pass a subset so a user can also keep whole kinds (recolorScopeDialog);
+    // keepMeaningful: false restores the old snap-absolutely-everything.
     // opts.silent: skip the undo snapshot and dirty flag. For read-only
     // embedders (the kiosk rotates themes on a timer) where there is no user
     // to undo for and nothing is ever saved - snapshotting a whole board every
     // few minutes is pure churn on a low-powered wall display.
+    // A color that MEANS something, as opposed to default ink: chromatic
+    // (real hue, not grey/black/white). The distinction drives recolor's
+    // keep-meaningful mode - a diagram's forty grey boxes are "default ink"
+    // and should follow the theme, but the one red 10Gb uplink in the legend
+    // is information and must survive a retheme. Neutral = low channel
+    // spread; the same idea as isChromatic, which this simply adapts to
+    // color STRINGS as stored on objects.
+    function isMeaningfulColor(str) {
+        if (!str) return false;
+        const rgb = parseColorToRGB(String(str));
+        return !!rgb && isChromatic(rgb[0], rgb[1], rgb[2]);
+    }
+
     function recolorAllToTheme(opts) {
         opts = opts || {};
         const doDev = opts.devices !== false, doZone = opts.zones !== false;
         const doConn = opts.connections !== false, doText = opts.textBoxes !== false;
+        // Keep-meaningful (default ON): chromatic connection colors and label
+        // inks are legend information and survive; neutral ones snap to the
+        // theme. Pass keepMeaningful: false for the old snap-everything.
+        const keep = opts.keepMeaningful !== false;
         if (!doDev && !doZone && !doConn && !doText) return;
         if (!state.devices.length && !state.zones.length &&
             !state.connections.length && !state.textBoxes.length) return;
@@ -7425,7 +7521,8 @@
         if (doDev) {
             const tint = DEFAULT_DEVICE_TINT;   // null = the theme's untinted look
             state.devices.forEach(d => {
-                d.fontColor = DEFAULT_FONT_COLOR;   // label color follows the theme (all devices)
+                // Label ink follows the theme unless it carries meaning
+                if (!(keep && isMeaningfulColor(d.fontColor))) d.fontColor = DEFAULT_FONT_COLOR;
                 const src = d.originalImage || d.image;
                 if (!isSVGDataURL(src)) return;   // raster/pasted icons can't retint the glyph
                 if (!d.originalImage) d.originalImage = d.image;
@@ -7452,9 +7549,15 @@
                 z.fontColor = zBorder;
             });
         }
-        // Connections snap to the theme ink; text boxes to the theme label color.
-        if (doConn) state.connections.forEach(c => { c.color = DEFAULT_CONN_COLOR; });
-        if (doText) state.textBoxes.forEach(tb => { tb.fontColor = DEFAULT_FONT_COLOR; });
+        // Connections snap to the theme ink; text boxes to the theme label
+        // color - except chromatic ones in keep mode (speed legends, colored
+        // callouts), which are the diagram's information, not its skin.
+        if (doConn) state.connections.forEach(c => {
+            if (!(keep && isMeaningfulColor(c.color))) c.color = DEFAULT_CONN_COLOR;
+        });
+        if (doText) state.textBoxes.forEach(tb => {
+            if (!(keep && isMeaningfulColor(tb.fontColor))) tb.fontColor = DEFAULT_FONT_COLOR;
+        });
         renderAllDevices();   // also re-renders text boxes (shared device layer)
         renderAllZones();
         renderAllConnections();
@@ -7487,6 +7590,7 @@
                     row.className = 'recolor-scope-row';
                     const cb = document.createElement('input');
                     cb.type = 'checkbox'; cb.checked = true;
+                    cb.dataset.scope = key;
                     cbs[key] = cb;
                     const name = document.createElement('span'); name.textContent = label;
                     const sub = document.createElement('span');
@@ -7494,6 +7598,22 @@
                     row.append(cb, name, sub);
                     box.appendChild(row);
                 });
+                // Keep-meaningful: chromatic connection/label colors are legend
+                // information (a red 10Gb uplink), not skin - preserved by
+                // default; uncheck to snap absolutely everything.
+                const keepRow = document.createElement('label');
+                keepRow.className = 'recolor-scope-row';
+                keepRow.style.marginTop = '8px';
+                const keepCb = document.createElement('input');
+                keepCb.type = 'checkbox'; keepCb.checked = true;
+                keepCb.dataset.scope = 'keepMeaningful';
+                const keepName = document.createElement('span');
+                keepName.textContent = 'Keep meaningful colors';
+                const keepSub = document.createElement('span');
+                keepSub.className = 'dialog-item-note';
+                keepSub.textContent = ' - colored lines/text (legends) survive; greys follow the theme';
+                keepRow.append(keepCb, keepName, keepSub);
+                box.appendChild(keepRow);
                 const foot = document.createElement('div');
                 foot.className = 'inv-map-foot';
                 const cancel = document.createElement('button');
@@ -7503,7 +7623,8 @@
                 go.type = 'button'; go.className = 'dialog-btn primary'; go.textContent = 'Recolor';
                 go.addEventListener('click', () => close({
                     devices: cbs.devices.checked, zones: cbs.zones.checked,
-                    connections: cbs.connections.checked, textBoxes: cbs.textBoxes.checked
+                    connections: cbs.connections.checked, textBoxes: cbs.textBoxes.checked,
+                    keepMeaningful: keepCb.checked
                 }));
                 foot.append(cancel, go);
                 box.appendChild(foot);
@@ -16735,7 +16856,7 @@
             // resolution in front of it, so a test can compute a connection's
             // polyline exactly as the renderer does.
             connRoutePoints, resolveConnEndpoint, routeOrthogonal, getAbsoluteAP, findNode,
-            refitBendsToPath, setNodeAPCount, feasibleAPMax,
+            refitBendsToPath, setNodeAPCount, feasibleAPMax, floatingAPIndex,
             // label placement along that polyline (conn.labelT)
             connLabelAnchor, connLabelT, getNearestT, getPointAlongPath,
             // connect-mode press routing, extracted so it is testable without
