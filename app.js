@@ -897,6 +897,39 @@
         if (sx === 1 && sy === 1) return;
         node.attachmentPoints = (node.attachmentPoints || []).map(ap =>
             ({ rx: ap.rx * sx, ry: ap.ry * sy }));
+        // Resizing changes how many APs FIT - keep the open panel's slider
+        // range honest (see feasibleAPMax). The existing points are never
+        // touched here: shrinking below the current count leaves them dense
+        // but intact, and the slider simply stops offering infeasible counts.
+        syncAPSliderMax(node);
+    }
+
+    // How many attachment points an object's size can hold legibly: each side
+    // takes as many as keep MIN_AP_SPACING between them (an AP dot is 12px
+    // across), per axis, plus the four corners - floored to the sliders' step
+    // of 4. Never below 16: a standard 60px device computes to EXACTLY 16, so
+    // default-size objects keep the historical range and only bigger objects
+    // unlock more. Capped at 64. Density is a WORLD-unit judgment on purpose:
+    // dense APs are used zoomed in, where the spacing is comfortable anyway.
+    const MIN_AP_SPACING = 15;
+    function feasibleAPMax(w, h) {
+        const nx = Math.max(0, Math.floor(w / MIN_AP_SPACING - 1));
+        const ny = Math.max(0, Math.floor(h / MIN_AP_SPACING - 1));
+        const raw = 4 + 2 * nx + 2 * ny;
+        return Math.max(16, Math.min(64, Math.floor(raw / 4) * 4));
+    }
+
+    // Point the right panel's AP slider at the node's current feasible range.
+    // Called on panel open and from redistributeAPs during resize; a node
+    // that isn't the current selection has no open slider and is skipped.
+    function syncAPSliderMax(node) {
+        let prefix = null;
+        if (node.id === state.selectedDevice) prefix = 'device';
+        else if (node.id === state.selectedZone) prefix = 'zone';
+        else if (node.id === state.selectedImage) prefix = 'image';
+        if (!prefix) return;
+        const slider = document.getElementById(prefix + '-ap-slider');
+        if (slider) slider.max = feasibleAPMax(node.w, node.h);
     }
 
     // Change a node's attachment-point count while keeping existing connections
@@ -6564,6 +6597,7 @@
             document.getElementById('device-font-family').value = device.fontFamily || '';
             document.getElementById('device-iconbg-color').value = device.iconBg || '#fffefe';
             document.getElementById('device-ap-count').textContent = device.attachmentPoints.length;
+            syncAPSliderMax(device);
             document.getElementById('device-ap-slider').value = device.attachmentPoints.length;
             document.getElementById('device-w-input').value = device.w;
             document.getElementById('device-h-input').value = device.h;
@@ -8340,6 +8374,7 @@
             document.getElementById('image-font-size').value = img.fontSize || 20;
             document.getElementById('image-font-color').value = img.fontColor || '#333333';
             document.getElementById('image-ap-count').textContent = img.attachmentPoints ? img.attachmentPoints.length : 0;
+            syncAPSliderMax(img);
             document.getElementById('image-ap-slider').value = img.attachmentPoints ? img.attachmentPoints.length : 8;
         } else {
             panel.style.display = 'none';
@@ -8390,6 +8425,7 @@
             // rectangle) - normalize so the dropdown isn't left blank.
             document.getElementById('zone-shape-select').value = (zone.shape === 'rectangle' ? 'rect' : (zone.shape || 'rect'));
             document.getElementById('zone-ap-count').textContent = zone.attachmentPoints ? zone.attachmentPoints.length : 0;
+            syncAPSliderMax(zone);
             document.getElementById('zone-ap-slider').value = zone.attachmentPoints ? zone.attachmentPoints.length : 8;
         } else {
             panel.style.display = 'none';
@@ -16699,7 +16735,7 @@
             // resolution in front of it, so a test can compute a connection's
             // polyline exactly as the renderer does.
             connRoutePoints, resolveConnEndpoint, routeOrthogonal, getAbsoluteAP, findNode,
-            refitBendsToPath, setNodeAPCount,
+            refitBendsToPath, setNodeAPCount, feasibleAPMax,
             // label placement along that polyline (conn.labelT)
             connLabelAnchor, connLabelT, getNearestT, getPointAlongPath,
             // connect-mode press routing, extracted so it is testable without

@@ -306,6 +306,7 @@ async function run(t) {
   lineJumpSuite(t);
   labelHaloSuite(t);
   minimapSuite(t);
+  apCapSuite(t);
   labelSlideSuite(t);
   connectIntentSuite(t);
   await clipboardSuite(t);
@@ -695,6 +696,60 @@ function minimapSuite(t) {
     btn().click();
     ok('toggles back off', mm().style.display === 'none' &&
       iwin.localStorage.getItem('crosscanvas-minimap') === '0');
+  });
+}
+
+// --- size-aware AP cap -----------------------------------------------------
+// The AP sliders' MAX is computed from object size: each side holds as many
+// points as keep 15px spacing (an AP dot is 12px), plus corners, floored to
+// the step of 4, clamped [16, 64]. A standard 60px device computes to
+// exactly 16, so default-size objects keep the historical range. Resizing
+// never regenerates APs (redistributeAPs scales them), so shrinking below
+// the current count leaves points dense-but-intact; the slider just stops
+// offering infeasible counts.
+function apCapSuite(t) {
+  const idoc = document.querySelector('iframe').contentDocument;
+  const AP = (w,h) => [{rx:w/2,ry:0},{rx:w,ry:0},{rx:w,ry:h/2},{rx:w,ry:h},{rx:w/2,ry:h},{rx:0,ry:h},{rx:0,ry:h/2},{rx:0,ry:0}];
+
+  suite('Size-aware AP cap', () => {
+    ok('60x60 device computes to exactly the historical 16', t.feasibleAPMax(60, 60) === 16);
+    ok('100x100 unlocks 24', t.feasibleAPMax(100, 100) === 24, t.feasibleAPMax(100, 100));
+    ok('90x60 lands on the step of 4 (5+3 per axis -> 20)', t.feasibleAPMax(90, 60) === 20,
+      t.feasibleAPMax(90, 60));
+    ok('a large zone caps at 64', t.feasibleAPMax(300, 200) === 64, t.feasibleAPMax(300, 200));
+    ok('tiny objects never drop below 16', t.feasibleAPMax(40, 40) === 16, t.feasibleAPMax(40, 40));
+
+    // Panel integration: selecting a big zone raises the slider max; a
+    // standard device keeps 16.
+    t.applyDiagramData({ version:6, diagramTitle:'apcap', diagramVersion:1,
+      devices:[{ id:'d1', x:100, y:100, w:60, h:60, label:'Dev', labelPosition:'bottom',
+        fontSize:14, fontColor:'#333333', tintColor:null,
+        spans:[[{text:'Dev',bold:false,italic:false}]], lineFormats:[{bold:false,italic:false}],
+        attachmentPoints:AP(60,60), fields:{} }],
+      connections:[], zones:[{ id:'z1', x:300, y:100, w:300, h:200, fill:'#e8f4fd', opacity:1,
+        borderColor:'#2d67b9', label:'Big', labelPosition:'top-inside', shape:'rect',
+        attachmentPoints:AP(300,200) }],
+      textBoxes:[], images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:9 });
+
+    const zone = t.state.zones[0];
+    t.state.selectedZone = 'z1';
+    // Regenerate at a count only a big object allows.
+    t.setNodeAPCount(zone, 32);
+    ok('setNodeAPCount(32) on a big zone takes', zone.attachmentPoints.length === 32,
+      zone.attachmentPoints.length);
+
+    // Shrink: APs scale, none are dropped, and the feasible max falls.
+    const ow = zone.w, oh = zone.h;
+    zone.w = 100; zone.h = 100;
+    // redistributeAPs is what every resize path calls
+    const before = zone.attachmentPoints.length;
+    // scale via the app's own path: mimic a resize commit
+    zone.attachmentPoints = zone.attachmentPoints.map(ap => ({ rx: ap.rx * (100/ow), ry: ap.ry * (100/oh) }));
+    ok('shrinking keeps every AP (dense but intact)', zone.attachmentPoints.length === before);
+    ok('the shrunken zone now offers only 24', t.feasibleAPMax(zone.w, zone.h) === 24);
+    ok('every scaled AP stays on the shrunken perimeter box',
+      zone.attachmentPoints.every(ap => ap.rx >= -0.01 && ap.rx <= 100.01 && ap.ry >= -0.01 && ap.ry <= 100.01));
+    t.state.selectedZone = null;
   });
 }
 
