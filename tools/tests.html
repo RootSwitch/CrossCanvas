@@ -302,11 +302,104 @@ async function run(t) {
   });
 
   routingSuite(t);
+  obstacleSuite(t);
   labelSlideSuite(t);
   connectIntentSuite(t);
   await clipboardSuite(t);
   await corpusSuite(t);
   render();
+}
+
+// --- obstacle-scored routing ----------------------------------------------
+// The router scores candidate routes against the board's devices: crossings
+// dominate, then corners, then length. Two invariants pinned here: a route
+// that crosses nothing is BYTE-IDENTICAL to the classic router's output
+// (existing boards and their bends cannot change), and a route that would
+// cross a third device steps around it while staying orthogonal.
+function obstacleSuite(t) {
+  // Independent reimplementation of the crossing test - the suite must not
+  // certify the router with the router's own math.
+  const crossings = (pts, dev, pad) => {
+    const r = { l: dev.x - pad, t: dev.y - pad, r2: dev.x + dev.w + pad, b: dev.y + dev.h + pad };
+    let n = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const x1 = Math.min(pts[i].x, pts[i + 1].x), x2 = Math.max(pts[i].x, pts[i + 1].x);
+      const y1 = Math.min(pts[i].y, pts[i + 1].y), y2 = Math.max(pts[i].y, pts[i + 1].y);
+      if (x1 < r.r2 && x2 > r.l && y1 < r.b && y2 > r.t) n++;
+    }
+    return n;
+  };
+  const blocker = (x, y) => ({
+    id: 'blk', x, y, w: 60, h: 60, label: 'Blocker', labelPosition: 'bottom',
+    fontSize: 16, fontColor: '#333333', tintColor: null,
+    spans: [[{ text: 'Blocker', bold: false, italic: false }]],
+    lineFormats: [{ bold: false, italic: false }],
+    attachmentPoints: [
+      { rx: 30, ry: 0 }, { rx: 60, ry: 0 }, { rx: 60, ry: 30 }, { rx: 60, ry: 60 },
+      { rx: 30, ry: 60 }, { rx: 0, ry: 60 }, { rx: 0, ry: 30 }, { rx: 0, ry: 0 }
+    ]
+  });
+
+  suite('Obstacle-scored routing', () => {
+    // 1. Facing APs with a device dead centre in the corridor: the classic
+    //    route ran straight through it. AP 2 (right-centre) -> AP 6
+    //    (left-centre), blocker centred between and on the same row.
+    let doc = twoBoxDoc(100, 200, 600, 200, 2, 6);
+    doc.devices.push(blocker(320, 200));
+    t.applyDiagramData(doc);
+    let pts = routeOf(t, t.state.connections[0]);
+    ok('blocker in the corridor is avoided', crossings(pts, t.state.devices[2], 0) === 0,
+      crossings(pts, t.state.devices[2], 0) + ' crossing(s): ' + JSON.stringify(pts));
+    ok('the avoiding route is orthogonal', orthoOffenders(pts).length === 0,
+      orthoOffenders(pts).join('; '));
+    ok('the avoiding route still spans the endpoints',
+      pts[0].x === 160 && pts[pts.length - 1].x === 600, JSON.stringify([pts[0], pts[pts.length - 1]]));
+
+    // 2. A clean corridor is untouched: with the blocker far away, the route
+    //    must be byte-identical to the two-device route. This is the guarantee
+    //    that existing boards (and bends keyed against their natural routes)
+    //    cannot change out from under anyone.
+    t.applyDiagramData(twoBoxDoc(100, 200, 600, 200, 2, 6));
+    const clean = JSON.stringify(routeOf(t, t.state.connections[0]));
+    doc = twoBoxDoc(100, 200, 600, 200, 2, 6);
+    doc.devices.push(blocker(320, 600));   // same board, blocker out of the way
+    t.applyDiagramData(doc);
+    ok('a clean corridor keeps the classic route byte-identical',
+      JSON.stringify(routeOf(t, t.state.connections[0])) === clean,
+      'route changed with no crossing in play');
+
+    // 3. Determinism: scoring has no randomness and ties keep candidate #0.
+    doc = twoBoxDoc(100, 200, 600, 200, 2, 6);
+    doc.devices.push(blocker(320, 200));
+    t.applyDiagramData(doc);
+    const r1 = JSON.stringify(routeOf(t, t.state.connections[0]));
+    const r2 = JSON.stringify(routeOf(t, t.state.connections[0]));
+    ok('avoidance is deterministic', r1 === r2);
+
+    // 4. Bends on an obstacle-adjusted skeleton ride the same guards as any
+    //    other skeleton change: apply when absorbable, skip when not, and
+    //    NEVER produce a diagonal.
+    doc = twoBoxDoc(120, 400, 420, 120, 1, 6);
+    doc.devices.push(blocker(250, 230));
+    t.applyDiagramData(doc);
+    const conn = t.state.connections[0];
+    if (bendOneSegment(t, conn, 1, 40)) {
+      const bad = orthoOffenders(routeOf(t, conn));
+      ok('a bend over an obstacle-adjusted route stays orthogonal', bad.length === 0, bad.join('; '));
+    } else {
+      skip('bend over obstacle-adjusted route', 'route too short to bend');
+    }
+
+    // 5. Vertical corridor variant of case 1 (the other rail branch).
+    doc = twoBoxDoc(200, 100, 200, 600, 4, 0);
+    doc.devices.push(blocker(200, 320));
+    t.applyDiagramData(doc);
+    pts = routeOf(t, t.state.connections[0]);
+    ok('vertical corridor blocker is avoided', crossings(pts, t.state.devices[2], 0) === 0,
+      crossings(pts, t.state.devices[2], 0) + ' crossing(s)');
+    ok('vertical avoidance is orthogonal', orthoOffenders(pts).length === 0,
+      orthoOffenders(pts).join('; '));
+  });
 }
 
 // --- clipboard routing (recency marker) ----------------------------------

@@ -1494,7 +1494,23 @@
         const points = [start];
         points.push(...generateWaypoints(start, end, startDir, endDir));
         points.push(end);
-        return points;
+
+        // Obstacle-scored selection. The natural route above is candidate #0
+        // and strict comparison keeps it on ties, so a route that crosses no
+        // device is BYTE-IDENTICAL to what this router has always produced -
+        // existing boards, and every manual bend keyed against an uncrossed
+        // natural route, cannot change. Only a route that currently plows
+        // through a third device gets replaced by a scored alternative.
+        const obstacles = routeObstacles(startNode, endNode);
+        if (!obstacles.length) return points;
+        const baseCost = routeCost(points, obstacles);
+        if (baseCost < CROSSING_COST) return points;   // zero crossings: done
+        let best = points, bestCost = baseCost;
+        for (const cand of candidateRoutes(start, end, startDir, endDir)) {
+            const cost = routeCost(cand, obstacles);
+            if (cost < bestCost) { bestCost = cost; best = cand; }
+        }
+        return best;
     }
 
     // Full route polyline for a connection between resolved endpoints:
@@ -1886,6 +1902,117 @@
         }
 
         return waypoints;
+    }
+
+    // --- Obstacle-scored route selection ------------------------------------
+    // generateWaypoints() is purely geometric - it knows the two endpoints and
+    // nothing about the rest of the board, so a natural route routinely ran
+    // straight through whatever device sat between them. The selection layer
+    // in routeOrthogonal scores a handful of CANDIDATE routes (the natural one
+    // plus slid rails and full detours) against the board's devices: crossings
+    // dominate, then corner count, then length. Candidate scoring rather than
+    // grid pathfinding: deterministic, cheap, and on a board a human laid out,
+    // one of ~10 corridors is almost always clean.
+    //
+    // Obstacles are DEVICES only, deliberately: zones are containers a route
+    // may legally cross, images are backgrounds (a floorplan MUST be crossed),
+    // and text boxes are annotations. The two endpoint devices are excluded -
+    // a route necessarily touches both.
+    //
+    // When a route changes shape because a device moved into its corridor, a
+    // stored bend whose skeleton no longer matches is skipped-not-deleted by
+    // the applyManualBends guards, exactly as for any other skeleton change -
+    // and comes back when the corridor clears.
+    const CROSSING_COST = 100000;
+
+    function routeObstacles(startNode, endNode) {
+        const pad = 6;
+        const out = [];
+        for (const d of state.devices) {
+            if (startNode && d.id === startNode.id) continue;
+            if (endNode && d.id === endNode.id) continue;
+            out.push({ left: d.x - pad, top: d.y - pad,
+                       right: d.x + d.w + pad, bottom: d.y + d.h + pad });
+        }
+        return out;
+    }
+
+    // Axis-aligned segment vs rect: the segment is a degenerate rect, so a
+    // plain overlap test is exact (routes here are always orthogonal).
+    function segCrossesRect(a, b, r) {
+        const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x);
+        const y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
+        return x1 < r.right && x2 > r.left && y1 < r.bottom && y2 > r.top;
+    }
+
+    function routeCost(pts, obstacles) {
+        let crossings = 0, corners = 0, length = 0;
+        let prevVert = null;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const a = pts[i], b = pts[i + 1];
+            const dx = Math.abs(a.x - b.x), dy = Math.abs(a.y - b.y);
+            length += dx + dy;
+            for (const r of obstacles) { if (segCrossesRect(a, b, r)) crossings++; }
+            // Corners: direction changes over non-degenerate segments only -
+            // a zero-length segment has no orientation to change from (the
+            // same trap naturalSegmentOrientations documents).
+            if (dx < 0.5 && dy < 0.5) continue;
+            const vert = dx <= dy;
+            if (prevVert !== null && vert !== prevVert) corners++;
+            prevVert = vert;
+        }
+        return crossings * CROSSING_COST + corners * 40 + length;
+    }
+
+    // Candidate mid-sections mirroring generateWaypoints' three shapes, with
+    // the connecting rail slid to fixed offsets plus full detours around the
+    // endpoints. Every candidate exits/enters along the AP directions via the
+    // same 30px stubs the natural route uses, so orthogonality and arrowhead
+    // approach angles are preserved by construction.
+    function candidateRoutes(start, end, startDir, endDir) {
+        const offset = 30;
+        const s1 = { x: start.x + startDir.dx * offset, y: start.y + startDir.dy * offset };
+        const e1 = { x: end.x + endDir.dx * offset, y: end.y + endDir.dy * offset };
+        const routes = [];
+        const push = (mid) => routes.push([start, ...mid, end]);
+        const RAILS = [-40, 40, -90, 90, -160, 160];
+
+        if (startDir.dx !== 0 && endDir.dx !== 0) {
+            // Both exits horizontal: slide the horizontal rail, then detour
+            // fully above/below everything near the endpoints.
+            const mid = (s1.y + e1.y) / 2;
+            for (const off of RAILS) {
+                push([s1, { x: s1.x, y: mid + off }, { x: e1.x, y: mid + off }, e1]);
+            }
+            const lo = Math.min(start.y, end.y, s1.y, e1.y) - 60;
+            const hi = Math.max(start.y, end.y, s1.y, e1.y) + 60;
+            for (const my of [lo, hi]) {
+                push([s1, { x: s1.x, y: my }, { x: e1.x, y: my }, e1]);
+            }
+        } else if (startDir.dy !== 0 && endDir.dy !== 0) {
+            const mid = (s1.x + e1.x) / 2;
+            for (const off of RAILS) {
+                push([s1, { x: mid + off, y: s1.y }, { x: mid + off, y: e1.y }, e1]);
+            }
+            const lo = Math.min(start.x, end.x, s1.x, e1.x) - 60;
+            const hi = Math.max(start.x, end.x, s1.x, e1.x) + 60;
+            for (const mx of [lo, hi]) {
+                push([s1, { x: mx, y: s1.y }, { x: mx, y: e1.y }, e1]);
+            }
+        } else if (startDir.dx !== 0) {
+            // Horizontal exit, vertical arrival: the natural route is one
+            // corner; alternatives run a vertical channel between the stubs.
+            const mid = (s1.x + e1.x) / 2;
+            for (const off of [0, ...RAILS]) {
+                push([s1, { x: mid + off, y: s1.y }, { x: mid + off, y: e1.y }, e1]);
+            }
+        } else {
+            const mid = (s1.y + e1.y) / 2;
+            for (const off of [0, ...RAILS]) {
+                push([s1, { x: s1.x, y: mid + off }, { x: e1.x, y: mid + off }, e1]);
+            }
+        }
+        return routes;
     }
 
     function buildPathString(points, routing) {
