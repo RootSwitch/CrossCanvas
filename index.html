@@ -301,6 +301,14 @@
                         <input type="range" id="route-clearance" min="0" max="40" step="2" value="6">
                     </div>
                     <div class="default-size-control">
+                        <label title="Labels stroke a halo in their background color so text stays readable where connections pass behind it. Saved with the board. 'Devices & text' leaves zone and image labels bare - useful on map/floorplan boards where titles should sit directly on the artwork.">Label Halos</label>
+                        <select id="label-halos" style="width:100%">
+                            <option value="all" selected>All labels</option>
+                            <option value="devices">Devices &amp; text only</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </div>
+                    <div class="default-size-control">
                         <label title="Extra horizontal room per device on inventory-CSV import - widen for long hostnames that would otherwise clip into each other">Import Spacing - Wider: <span id="import-hspace-label">100%</span></label>
                         <input type="range" id="import-hspace" min="100" max="250" step="10" value="100">
                     </div>

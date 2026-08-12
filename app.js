@@ -89,6 +89,15 @@
     // a legacy file saved without the field loads OFF, so boards drawn before
     // the feature keep their exact look until their author opts in.
     let LINE_JUMPS = true;
+    // Label halo scope, a BOARD property like LINE_JUMPS (it changes how the
+    // board draws, so it travels in the file for kiosk parity). 'all' halos
+    // every label; 'devices' halos device labels and text boxes but leaves
+    // zone and image labels bare - the geo-board case, where titles sat
+    // legibly on a map image until the canvas-colored halo outlined them;
+    // 'off' disables halos entirely (deliberate styling, e.g. red labels
+    // meant to sit raw on the artwork).
+    let LABEL_HALOS = 'all';
+    const LABEL_HALOS_DEFAULT = 'all';
     const AP_RADIUS = 6;
 
     let state = {
@@ -223,6 +232,20 @@
 
     // One writer for the board's line-jump flag so the value and the toolbar
     // button can never disagree - loads, undo and the button all land here.
+    // One writer for the halo scope; unknown values from a file fall back to
+    // the default. Keeps the Default Settings select in agreement.
+    function setLabelHalos(mode) {
+        LABEL_HALOS = (mode === 'devices' || mode === 'off') ? mode : LABEL_HALOS_DEFAULT;
+        const sel = document.getElementById('label-halos');
+        if (sel) sel.value = LABEL_HALOS;
+    }
+
+    function haloEnabledFor(kind) {
+        if (LABEL_HALOS === 'off') return false;
+        if (LABEL_HALOS === 'devices') return kind === 'device' || kind === 'text';
+        return true;
+    }
+
     function setLineJumps(on) {
         LINE_JUMPS = on === true;
         const btn = document.getElementById('btn-jumps');
@@ -260,7 +283,8 @@
             // Ctrl+Z would restore the geometry without the settings that
             // shaped it.
             routeClearance: ROUTE_CLEARANCE,
-            lineJumps: LINE_JUMPS
+            lineJumps: LINE_JUMPS,
+            labelHalos: LABEL_HALOS
         }, snapshotReplacer);
     }
 
@@ -304,6 +328,7 @@
         }
         if (data.routeClearance !== undefined) setRouteClearance(data.routeClearance);
         if (data.lineJumps !== undefined) setLineJumps(data.lineJumps);
+        if (data.labelHalos !== undefined) setLabelHalos(data.labelHalos);
         state.selectedDevice = null;
         state.selectedConnection = null;
         state.selectedZone = null;
@@ -1404,7 +1429,7 @@
         return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
     }
 
-    function renderMultiLineLabel(group, obj, w, h, colorFallback, adaptiveDark, faceColor) {
+    function renderMultiLineLabel(group, obj, w, h, colorFallback, adaptiveDark, faceColor, kind) {
         const label = obj.label || '';
         if (!label) return;
         const spans = obj.spans || [[{ text: label, bold: false, italic: false }]];
@@ -1424,7 +1449,8 @@
         // samples the board. Invisible until a connection runs behind the
         // text - no toggle, no format field, nothing to configure.
         const inside = pos === 'center' || pos === 'top-inside' || pos === 'bottom-inside';
-        const halo = (inside && faceColor) ? faceColor
+        const haloOn = haloEnabledFor(kind || 'device');
+        const halo = !haloOn ? null : (inside && faceColor) ? faceColor
             : surfaceColorAt((obj.x || 0) + anchor.x, (obj.y || 0) + anchor.y);
         const haloW = Math.min(5, Math.max(2.5, fs * 0.18));
 
@@ -1445,10 +1471,12 @@
             text.setAttribute('font-size', fs);
             if (ff) text.setAttribute('font-family', ff);
             text.setAttribute('fill', fillColor);
-            text.setAttribute('paint-order', 'stroke');
-            text.setAttribute('stroke', halo);
-            text.setAttribute('stroke-width', haloW);
-            text.setAttribute('stroke-linejoin', 'round');
+            if (halo) {
+                text.setAttribute('paint-order', 'stroke');
+                text.setAttribute('stroke', halo);
+                text.setAttribute('stroke-width', haloW);
+                text.setAttribute('stroke-linejoin', 'round');
+            }
             if (adaptive) text.classList.add('device-label-adaptive');
             if (obj.fillOpacity != null) text.setAttribute('fill-opacity', obj.fillOpacity);
             lineSpans.forEach(span => {
@@ -1525,7 +1553,7 @@
 
         if (device.label) {
             renderMultiLineLabel(group, device, device.w, device.h, '#333', true,
-                device.iconBg || 'rgb(255,254,254)');   // inside labels sit on the face
+                device.iconBg || 'rgb(255,254,254)', 'device');   // inside labels sit on the face
         }
 
         device.attachmentPoints.forEach((ap, i) => {
@@ -1640,7 +1668,7 @@
             surfaceIsDarkAt(tb.x + boxW / 2, tb.y + boxH / 2)) ? '#ffffff' : tbColor;
         // Same label halo as device labels (see renderMultiLineLabel) - text
         // boxes are the user's own fix for crowded spots, so they need it most.
-        const tbHalo = surfaceColorAt(tb.x + boxW / 2, tb.y + boxH / 2);
+        const tbHalo = haloEnabledFor('text') ? surfaceColorAt(tb.x + boxW / 2, tb.y + boxH / 2) : null;
         const tbHaloW = Math.min(5, Math.max(2.5, fs * 0.18));
 
         spans.forEach((lineSpans, i) => {
@@ -1654,10 +1682,12 @@
             text.setAttribute('font-size', fs);
             if (tbff) text.setAttribute('font-family', tbff);
             text.setAttribute('fill', tbFill);
-            text.setAttribute('paint-order', 'stroke');
-            text.setAttribute('stroke', tbHalo);
-            text.setAttribute('stroke-width', tbHaloW);
-            text.setAttribute('stroke-linejoin', 'round');
+            if (tbHalo) {
+                text.setAttribute('paint-order', 'stroke');
+                text.setAttribute('stroke', tbHalo);
+                text.setAttribute('stroke-width', tbHaloW);
+                text.setAttribute('stroke-linejoin', 'round');
+            }
             text.setAttribute('text-anchor', align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start');
             text.style.pointerEvents = 'none';
             lineSpans.forEach(span => {
@@ -1690,18 +1720,21 @@
         return !(r1.right <= r2.left || r1.left >= r2.right || r1.bottom <= r2.top || r1.top >= r2.bottom);
     }
 
-    function routeOrthogonal(start, end, conn) {
-        // Resolve endpoint nodes from the connection itself so routing is
-        // deterministic - never from transient state or positional lookup
+    // The pre-scoring route: AP exit directions + the purely geometric
+    // elbow shapes. This is the skeleton legacy bends were recorded against.
+    function classicOrthogonal(start, end, conn) {
         const startNode = (conn && findNode(conn.fromDevice)) || findNodeForPoint(start);
         const endNode = (conn && findNode(conn.toDevice)) || findNodeForPoint(end);
-
         const startDir = getAPDirection(start, startNode, end);
         const endDir = getAPDirection(end, endNode, start);
-
         const points = [start];
         points.push(...generateWaypoints(start, end, startDir, endDir));
         points.push(end);
+        return points;
+    }
+
+    function routeOrthogonal(start, end, conn) {
+        const points = classicOrthogonal(start, end, conn);
 
         // HAND-SHAPED ROUTES ARE NOT SECOND-GUESSED. Bends are applied to this
         // skeleton afterwards by applyManualBends, so a router that reshapes
@@ -1712,17 +1745,30 @@
         // cross it, and avoidance sent both cables out of their zone on a
         // 713px detour in place of the drawn 223px one. Whoever bent the line
         // has already answered the question avoidance exists to ask.
-        if (conn && conn.bends && Object.keys(conn.bends).length) return points;
+        //
+        // The exception is bends the user placed ON an obstacle-dodged route:
+        // those carry bendsOnAvoid (set by adoptAvoidedSkeleton when the bend
+        // drag starts) and keep the SCORED skeleton - without it, the first
+        // bend write flipped the route back to the classic crossing shape
+        // mid-drag and the connection visibly exploded under the cursor.
+        // Scoring is deterministic in the same geometry, so replaying these
+        // bends against the scored skeleton is exactly as stable as legacy
+        // bends against the classic one.
+        if (conn && conn.bends && Object.keys(conn.bends).length && !conn.bendsOnAvoid) return points;
 
         // Obstacle-scored selection - see routeScore for the cost model. A
         // route is only in trouble if it truly OVERLAPS a device, so a route
         // that crosses nothing is BYTE-IDENTICAL to what this router has
         // always produced: existing boards, and every manual bend keyed
         // against an uncrossed natural route, cannot change.
+        const startNode = (conn && findNode(conn.fromDevice)) || findNodeForPoint(start);
+        const endNode = (conn && findNode(conn.toDevice)) || findNodeForPoint(end);
         const obstacles = routeObstacles(startNode, endNode);
         if (!obstacles.length) return points;
         const base = routeScore(points, obstacles);
         if (!base.hits) return points;                 // nothing crossed: done
+        const startDir = getAPDirection(start, startNode, end);
+        const endDir = getAPDirection(end, endNode, start);
         let best = points, bestScore = base;
         for (const cand of candidateRoutes(start, end, startDir, endDir)) {
             const sc = routeScore(cand, obstacles);
@@ -1816,6 +1862,25 @@
         return points;
     }
 
+    // Called when a bend drag STARTS on a pristine (bend-free) connection:
+    // decide, once, which skeleton the coming bends belong to. If the route
+    // the user is looking at is an obstacle-dodged one, the connection adopts
+    // it (bendsOnAvoid) so the shape under their cursor never flips; if the
+    // scored route IS the classic route, the flag clears - authoritative
+    // either way, so a stale flag from an old edit cannot linger into a new
+    // gesture. Connections that already carry bends are left alone: their
+    // skeleton was decided when their first bend was placed.
+    function adoptAvoidedSkeleton(conn) {
+        if (conn.bends && Object.keys(conn.bends).length) return;
+        const start = resolveConnEndpoint(conn, 'from');
+        const end = resolveConnEndpoint(conn, 'to');
+        if (!start || !end) return;
+        const scored = routeOrthogonal(start, end, conn);
+        const classic = classicOrthogonal(start, end, conn);
+        if (JSON.stringify(scored) !== JSON.stringify(classic)) conn.bendsOnAvoid = true;
+        else delete conn.bendsOnAvoid;
+    }
+
     // Re-fit manual bends to the path the user last saw, after a reroute
     // changed the skeleton underneath them - an endpoint moved to a different
     // AP, or an AP-count change re-snapping every endpoint on a node.
@@ -1845,12 +1910,12 @@
     // stubs. Close, not identical, by construction.
     function refitBendsToPath(conn, oldPts) {
         if (!conn || !oldPts || oldPts.length < 2) return;
-        if (conn.routing === 'straight' || connIsFreeEnded(conn)) { delete conn.bends; return; }
+        if (conn.routing === 'straight' || connIsFreeEnded(conn)) { delete conn.bends; delete conn.bendsOnAvoid; return; }
         const start = resolveConnEndpoint(conn, 'from');
         const end = resolveConnEndpoint(conn, 'to');
-        if (!start || !end) { delete conn.bends; return; }
+        if (!start || !end) { delete conn.bends; delete conn.bendsOnAvoid; return; }
         const nat = routeOrthogonal(start, end, conn);
-        if (nat.length < 4) { delete conn.bends; return; }
+        if (nat.length < 4) { delete conn.bends; delete conn.bendsOnAvoid; return; }
         const isVert = naturalSegmentOrientations(nat);
         // The old path's rails. A diagonal-ish segment (imported waypoint
         // routes) classifies by its dominant axis; zero-length ones are noise.
@@ -1888,7 +1953,7 @@
             if (best && Math.abs(best.cross - natCross) > ROUTE_EPS) bends[i] = best.cross;
         }
         if (Object.keys(bends).length) conn.bends = bends;
-        else delete conn.bends;
+        else { delete conn.bends; delete conn.bendsOnAvoid; }
     }
 
     // Capture the manual-bend orientations of every connection accepted by
@@ -2018,7 +2083,7 @@
                 const nat = nOr[i] ? natural[i].x : natural[i].y;
                 if (Math.abs(val - nat) < ROUTE_EPS) delete conn.bends[idx];
             }
-            if (!Object.keys(conn.bends).length) delete conn.bends;
+            if (!Object.keys(conn.bends).length) { delete conn.bends; delete conn.bendsOnAvoid; }
             return true;
         }
         conn.waypoints = savedWaypoints;
@@ -4006,10 +4071,13 @@
         // The adaptive flips (connection strokes/arrows, device & image
         // labels, text boxes) are resolved at render time against the
         // surface behind them, so re-render everything that carries text
-        // or lines when the mode changes.
+        // or lines when the mode changes. Zones included: their titles'
+        // halos sample the canvas color, which just changed - skipping them
+        // left half-updated titles until the next incidental re-render.
         renderAllConnections();
         renderAllDevices();     // devices + text boxes (shared layer)
         renderAllImages();
+        renderAllZones();
     }
     darkBtn.addEventListener('click', () => {
         applyDarkMode(!document.body.classList.contains('dark-mode'));
@@ -4826,7 +4894,7 @@
         if (!e.target.value) return;
         pushUndo();
         batchTargets.connections.forEach(c => {
-            if (e.target.value === 'straight') { delete c.bends; delete c.waypoints; }
+            if (e.target.value === 'straight') { delete c.bends; delete c.bendsOnAvoid; delete c.waypoints; }
             c.routing = e.target.value;
         });
         renderAllConnections(); setDirty(true);
@@ -5280,6 +5348,11 @@
             const conn = state.connections.find(c => c.id === bendHandle.dataset.connId);
             if (conn) {
                 preDragSnapshot = snapshotState();
+                // First bend on this connection: pin down WHICH skeleton the
+                // bends will be recorded against (see adoptAvoidedSkeleton) -
+                // this must happen before naturalVal is read, so the value,
+                // the drag and every later render all use the same skeleton.
+                adoptAvoidedSkeleton(conn);
                 // The natural rail position for this segment (route without
                 // manual bends). Bend dragging snaps RELATIVE to it: rails sit
                 // off-grid by the 30px AP stub, so absolute grid stops could
@@ -6267,7 +6340,7 @@
             if (!e.altKey && conn.bends && conn.bends[segIndex] !== undefined && naturalVal != null) {
                 if (Math.abs(conn.bends[segIndex] - naturalVal) < GRID_SIZE / 2) {
                     delete conn.bends[segIndex];
-                    if (Object.keys(conn.bends).length === 0) delete conn.bends;
+                    if (Object.keys(conn.bends).length === 0) { delete conn.bends; delete conn.bendsOnAvoid; }
                     renderConnection(conn);
                 }
             }
@@ -6329,7 +6402,7 @@
                     }
                     delete conn.waypoints;
                     if (oldPts) refitBendsToPath(conn, oldPts);
-                    else delete conn.bends;
+                    else { delete conn.bends; delete conn.bendsOnAvoid; }
                     renderConnection(conn);
                 }
             } else {
@@ -6343,6 +6416,7 @@
                     delete conn.toFloating;
                 }
                 delete conn.bends;
+                delete conn.bendsOnAvoid;
                 delete conn.waypoints;
                 renderConnection(conn);
             }
@@ -6873,6 +6947,15 @@
             if (c) refitBendsToPath(c, pts);
         });
         renderAll();
+        setDirty(true);
+    });
+    // Halo scope. Board property - re-render every label carrier and dirty.
+    document.getElementById('label-halos').addEventListener('change', (e) => {
+        pushUndo();
+        setLabelHalos(e.target.value);
+        renderAllDevices();   // devices + text boxes (shared layer)
+        renderAllZones();
+        renderAllImages();
         setDirty(true);
     });
     // Inventory-CSV import spacing (applies to the NEXT import)
@@ -8343,7 +8426,7 @@
             lblGroup.setAttribute('transform', `translate(${zone.x}, ${zone.y})`);
             if (state.selectedZone === zone.id) lblGroup.classList.add('selected');
             if (state.selectedZones.includes(zone.id)) lblGroup.classList.add('multi-selected');
-            renderMultiLineLabel(lblGroup, zoneObj, zone.w, zone.h, zone.borderColor);
+            renderMultiLineLabel(lblGroup, zoneObj, zone.w, zone.h, zone.borderColor, false, null, 'zone');
             zoneLabelsLayer.appendChild(lblGroup);
         }
 
@@ -8436,7 +8519,7 @@
         group.appendChild(imgEl);
 
         if (img.label) {
-            renderMultiLineLabel(group, img, img.w, img.h, '#333', true);
+            renderMultiLineLabel(group, img, img.w, img.h, '#333', true, null, 'image');
         }
 
         if (img.attachmentPoints) {
@@ -8800,6 +8883,7 @@
         const newRouting = document.getElementById('conn-routing').value;
         if (newRouting === 'straight' && conn.routing !== 'straight') {
             delete conn.bends;
+            delete conn.bendsOnAvoid;
             delete conn.waypoints;   // straight paths ignore intermediate points
         }
         conn.routing = newRouting;
@@ -9713,6 +9797,7 @@
         // drawn look until their author opts in.
         setRouteClearance(ROUTE_CLEARANCE_DEFAULT);
         setLineJumps(true);
+        setLabelHalos(LABEL_HALOS_DEFAULT);
     }
 
     function buildSampleDiagram() {
@@ -12233,6 +12318,7 @@
         // fall back to the default rather than inheriting the previous board's.
         setRouteClearance(data.routeClearance !== undefined ? data.routeClearance : ROUTE_CLEARANCE_DEFAULT);
         setLineJumps(data.lineJumps === true);
+        setLabelHalos(data.labelHalos !== undefined ? data.labelHalos : LABEL_HALOS_DEFAULT);
         state.groups = Array.isArray(data.groups)
             ? data.groups.filter(g => g && Array.isArray(g.members)).map(g => ({ id: g.id || genId(), members: g.members.slice() }))
             : [];
@@ -13190,6 +13276,7 @@
             // existing files stay byte-identical through a round trip.
             ...(ROUTE_CLEARANCE !== ROUTE_CLEARANCE_DEFAULT ? { routeClearance: ROUTE_CLEARANCE } : {}),
             ...(LINE_JUMPS ? { lineJumps: true } : {}),
+            ...(LABEL_HALOS !== LABEL_HALOS_DEFAULT ? { labelHalos: LABEL_HALOS } : {}),
             devices: state.devices.map(d => Object.assign({}, d, { image: ref(d.image), originalImage: ref(d.originalImage) })),
             connections: state.connections,
             zones: state.zones,
@@ -15184,7 +15271,7 @@
         const wasDark = document.body.classList.contains('dark-mode');
         if (wasDark) {
             document.body.classList.remove('dark-mode');
-            renderAllConnections(); renderAllDevices(); renderAllImages();
+            renderAllConnections(); renderAllDevices(); renderAllImages(); renderAllZones();
         }
         try {
             const clone = canvas.cloneNode(true);
@@ -15248,7 +15335,7 @@
         } finally {
             if (wasDark) {
                 document.body.classList.add('dark-mode');
-                renderAllConnections(); renderAllDevices(); renderAllImages();
+                renderAllConnections(); renderAllDevices(); renderAllImages(); renderAllZones();
             }
         }
     }
@@ -16857,6 +16944,7 @@
             // polyline exactly as the renderer does.
             connRoutePoints, resolveConnEndpoint, routeOrthogonal, getAbsoluteAP, findNode,
             refitBendsToPath, setNodeAPCount, feasibleAPMax, floatingAPIndex,
+            adoptAvoidedSkeleton, classicOrthogonal,
             // label placement along that polyline (conn.labelT)
             connLabelAnchor, connLabelT, getNearestT, getPointAlongPath,
             // connect-mode press routing, extracted so it is testable without

@@ -427,6 +427,42 @@ function obstacleSuite(t) {
     ok('the unavoidable case stays orthogonal', orthoOffenders(after).length === 0,
       orthoOffenders(after).join('; '));
 
+    // 5b. BENDING AN AVOIDED ROUTE KEEPS ITS SKELETON. Without this, the
+    //     first bend write flipped routeOrthogonal back to the classic
+    //     crossing shape and the route exploded under the cursor (found by
+    //     the user grabbing a drag handle on a dodged path). The bend-drag
+    //     mousedown calls adoptAvoidedSkeleton, which stamps bendsOnAvoid
+    //     when the rendered route is a dodge - bends then replay against the
+    //     scored skeleton, deterministically.
+    doc = twoBoxDoc(100, 200, 600, 200, 2, 6);
+    doc.devices.push(blocker(320, 200));
+    t.applyDiagramData(doc);
+    const avConn = t.state.connections[0];
+    const dodged = JSON.stringify(routeOf(t, avConn));
+    t.adoptAvoidedSkeleton(avConn);
+    ok('adopting a dodged route stamps bendsOnAvoid', avConn.bendsOnAvoid === true);
+    ok('adoption alone changes nothing', JSON.stringify(routeOf(t, avConn)) === dodged);
+    if (bendOneSegment(t, avConn, 2, -30)) {
+      const bent = routeOf(t, avConn);
+      ok('a bend on the adopted route keeps the dodged SKELETON (no flip)',
+        bent.length === JSON.parse(dodged).length,
+        'points ' + JSON.parse(dodged).length + ' -> ' + bent.length + ': ' + JSON.stringify(bent));
+      ok('the nudged rail still dodges the blocker',
+        crossings(bent, t.state.devices[2], 0) === 0,
+        crossings(bent, t.state.devices[2], 0) + ' crossing(s): ' + JSON.stringify(bent));
+      ok('and stays orthogonal', orthoOffenders(bent).length === 0, orthoOffenders(bent).join('; '));
+    } else {
+      skip('bend on adopted route', 'route too short');
+    }
+    ok('the flag serializes with the connection',
+      t.serializeDiagram(false).connections[0].bendsOnAvoid === true);
+    // Clean-corridor connections never get the flag - and a stale one clears.
+    t.applyDiagramData(twoBoxDoc(100, 200, 600, 200, 2, 6));
+    const cleanConn = t.state.connections[0];
+    cleanConn.bendsOnAvoid = true;   // stale from an old edit
+    t.adoptAvoidedSkeleton(cleanConn);
+    ok('adoption clears a stale flag on a clean route', cleanConn.bendsOnAvoid === undefined);
+
     // 6. Vertical corridor variant of case 1 (the other rail branch).
     doc = twoBoxDoc(200, 100, 200, 600, 4, 0);
     doc.devices.push(blocker(200, 320));
@@ -638,6 +674,45 @@ function labelHaloSuite(t) {
     } else {
       skip('clicking the hoisted title selects its zone', 'no title element');
     }
+
+    // Halo SCOPE: a board property. 'devices' bares zone and image labels
+    // (the geo-board case - titles sitting legibly on a map artwork);
+    // 'off' bares everything. Driven through the real select.
+    const scopeSel = idoc.getElementById('label-halos');
+    const deviceHalo = () => labelTexts('h1')[0].getAttribute('stroke');
+    const zoneHalo = () => { const g = idoc.getElementById('zl-hz');
+      return g ? Array.from(g.querySelectorAll('text')).pop().getAttribute('stroke') : null; };
+    scopeSel.value = 'devices';
+    scopeSel.dispatchEvent(new (document.querySelector('iframe').contentWindow.Event)('change', { bubbles: true }));
+    ok('scope "devices": device labels keep their halo', !!deviceHalo());
+    ok('scope "devices": zone titles go bare', zoneHalo() === null, zoneHalo());
+    ok('non-default scope serializes', t.serializeDiagram(false).labelHalos === 'devices');
+    scopeSel.value = 'off';
+    scopeSel.dispatchEvent(new (document.querySelector('iframe').contentWindow.Event)('change', { bubbles: true }));
+    ok('scope "off": device labels go bare too', deviceHalo() === null, deviceHalo());
+    scopeSel.value = 'all';
+    scopeSel.dispatchEvent(new (document.querySelector('iframe').contentWindow.Event)('change', { bubbles: true }));
+    ok('back to "all": halos return and the field is omitted from saves',
+      !!deviceHalo() && t.serializeDiagram(false).labelHalos === undefined);
+
+    // Dark-mode toggle re-renders ZONES too: a title anchored outside its
+    // zone samples the canvas, which just changed color - it used to stay
+    // stale until an incidental re-render (user: "partially update... until
+    // you click on the canvas").
+    t.applyDiagramData({ version:6, diagramTitle:'dm', diagramVersion:1,
+      devices:[], connections:[], zones:[ { id:'dz', x:200, y:200, w:200, h:120,
+        fill:'#ffe0e0', opacity:1, borderColor:'#aa4444', label:'Above Title',
+        labelPosition:'top', shape:'rect' } ],
+      textBoxes:[], images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:5 });
+    const dmHalo = () => { const g = idoc.getElementById('zl-dz');
+      return g ? Array.from(g.querySelectorAll('text')).pop().getAttribute('stroke') : null; };
+    const lightHalo = dmHalo();
+    idoc.getElementById('btn-dark-mode').click();
+    const darkHalo = dmHalo();
+    idoc.getElementById('btn-dark-mode').click();
+    ok('dark-mode toggle re-renders zone titles immediately',
+      lightHalo !== darkHalo && dmHalo() === lightHalo,
+      'light=' + lightHalo + ' dark=' + darkHalo);
   });
 }
 
