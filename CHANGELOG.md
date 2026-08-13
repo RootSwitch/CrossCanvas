@@ -3,6 +3,18 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Connection Labels** joins Default Settings - a
+per-board choice of how connection labels and annotations dress. The classic
+translucent white box stays the default (old boards render byte-identically);
+**Rounded chip** keeps the box but rounds it honestly and lets the sides
+breathe, matching the kiosk's own latency and bandwidth chips; **Halo only**
+drops the box entirely and gives the text the same background-color stroke
+device labels get, so it sits directly on the artwork and stays readable
+where its own line runs behind it (obeys Label Halos; travels in the file
+for kiosk parity, and the raster export carries all three styles). Which
+reads best depends on the layout - that is why it is a choice, not a new
+default.
+
 **v4.1.0** (tagged August 2026) is the readability-and-routing arc, born from
 studying how each new AI model generation attacks the same "build a network
 diagram editor" prompt and adopting the mechanisms that fit - then testing

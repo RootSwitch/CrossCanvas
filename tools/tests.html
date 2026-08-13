@@ -793,6 +793,73 @@ function labelHaloSuite(t) {
       lightHalo !== darkHalo && dmHalo() === lightHalo,
       'light=' + lightHalo + ' dark=' + darkHalo);
   });
+
+  // Connection label STYLE: a board property like the halo scope. 'pill' is
+  // the historical translucent white box (the byte-compatible default),
+  // 'chip' keeps the box but rounds it honestly, 'halo' drops the box and
+  // strokes the surface color behind the glyphs - while the rect stays in
+  // the DOM as an invisible hit target so dragging and selection survive.
+  t.applyDiagramData({ version:6, diagramTitle:'cls-test', diagramVersion:1,
+    devices:[ box('c1', 100, 100), box('c2', 400, 100) ],
+    connections:[ { id:'cc1', fromDevice:'c1', fromAP:2, toDevice:'c2', toAP:6, color:'#336699',
+      thickness:2, dash:'solid', routing:'orthogonal', label:'trunk', fontSize:14,
+      spans:[[{text:'trunk',bold:false,italic:false}]], lineFormats:[{bold:false,italic:false}],
+      annotations:[ { id:'an1', position:0.5, text:'10G', fontSize:12,
+        spans:[[{text:'10G',bold:false,italic:false}]] } ] } ],
+    zones:[], textBoxes:[], images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:20 });
+
+  suite('Connection label style', () => {
+    const styleSel = idoc.getElementById('conn-label-style');
+    const iwin = document.querySelector('iframe').contentWindow;
+    const setStyle = v => { styleSel.value = v; styleSel.dispatchEvent(new iwin.Event('change', { bubbles: true })); };
+    const lblBg = () => idoc.querySelector('#cc1 .connection-label-bg');
+    const annBg = () => idoc.querySelector('#cc1 .connection-annotation-bg');
+    const lblText = () => idoc.querySelector('#cc1 text.connection-label');
+    const annText = () => idoc.querySelector('#cc1 text.connection-annotation');
+
+    ok('default pill: the historical box, near-square',
+      lblBg() && lblBg().getAttribute('fill-opacity') === '0.85' && lblBg().getAttribute('rx') === '2',
+      lblBg() && lblBg().getAttribute('rx'));
+    ok('...and the default is omitted from saves', t.serializeDiagram(false).connLabelStyle === undefined);
+    const pillW = parseFloat(lblBg().getAttribute('width'));
+
+    setStyle('chip');
+    ok('chip: same box, honest rounding', parseFloat(lblBg().getAttribute('rx')) >= 8,
+      lblBg().getAttribute('rx'));
+    ok('chip: sides push out past the pill box (rounded ends need room)',
+      parseFloat(lblBg().getAttribute('width')) >= pillW + 10,
+      pillW + ' -> ' + lblBg().getAttribute('width'));
+    ok('chip: annotations round too', parseFloat(annBg().getAttribute('rx')) >= 8,
+      annBg().getAttribute('rx'));
+    ok('non-default style serializes', t.serializeDiagram(false).connLabelStyle === 'chip');
+
+    setStyle('halo');
+    ok('halo: the box paint goes, the hit target stays',
+      lblBg() && lblBg().getAttribute('fill-opacity') === '0');
+    ok('halo: the label strokes the surface color behind the glyphs',
+      lblText().getAttribute('paint-order') === 'stroke' && rgb(lblText().getAttribute('stroke')) === '255,255,255',
+      lblText().getAttribute('stroke'));
+    ok('halo: annotations get the same stroke',
+      annBg().getAttribute('fill-opacity') === '0' && annText().getAttribute('paint-order') === 'stroke');
+
+    // The halo obeys the board's halo scope: both off = deliberately bare.
+    const scopeSel2 = idoc.getElementById('label-halos');
+    scopeSel2.value = 'off';
+    scopeSel2.dispatchEvent(new iwin.Event('change', { bubbles: true }));
+    setStyle('halo');   // re-render through the style writer
+    ok('halo style + halos off = bare text, no box', lblText().getAttribute('paint-order') === null &&
+      lblBg().getAttribute('fill-opacity') === '0');
+    scopeSel2.value = 'all';
+    scopeSel2.dispatchEvent(new iwin.Event('change', { bubbles: true }));
+
+    setStyle('pill');
+    ok('back to pill: box returns, stroke gone',
+      lblBg().getAttribute('fill-opacity') === '0.85' && lblText().getAttribute('paint-order') === null);
+    ok('an unknown value from a file falls back to pill',
+      (t.applyDiagramData({ version:6, diagramTitle:'x', diagramVersion:1, devices:[], connections:[],
+        zones:[], textBoxes:[], images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:2,
+        connLabelStyle:'sparkle' }), styleSel.value === 'pill'));
+  });
 }
 
 // --- minimap ---------------------------------------------------------------

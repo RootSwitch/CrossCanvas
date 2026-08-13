@@ -98,6 +98,16 @@
     // meant to sit raw on the artwork).
     let LABEL_HALOS = 'all';
     const LABEL_HALOS_DEFAULT = 'all';
+    // How connection labels and annotations dress - a BOARD property like the
+    // halo scope. 'pill' is the historical translucent white box (rx 2, which
+    // at kiosk scale reads as square); 'chip' keeps the box but rounds it
+    // honestly; 'halo' drops the box and gives the text the same
+    // background-color stroke device labels get, so it sits directly on the
+    // artwork yet stays readable where its own line runs behind it. These two
+    // surfaces are the only white boxes on a wall whose other text is haloed
+    // or dark-chipped - the style outlier this option exists to retire.
+    let CONN_LABEL_STYLE = 'pill';
+    const CONN_LABEL_STYLE_DEFAULT = 'pill';
     const AP_RADIUS = 6;
 
     let state = {
@@ -246,6 +256,14 @@
         return true;
     }
 
+    // One writer for the connection-label style; unknown values from a file
+    // fall back to the classic pill so old boards keep their exact look.
+    function setConnLabelStyle(v) {
+        CONN_LABEL_STYLE = (v === 'chip' || v === 'halo') ? v : CONN_LABEL_STYLE_DEFAULT;
+        const sel = document.getElementById('conn-label-style');
+        if (sel) sel.value = CONN_LABEL_STYLE;
+    }
+
     function setLineJumps(on) {
         LINE_JUMPS = on === true;
         const btn = document.getElementById('btn-jumps');
@@ -284,7 +302,8 @@
             // shaped it.
             routeClearance: ROUTE_CLEARANCE,
             lineJumps: LINE_JUMPS,
-            labelHalos: LABEL_HALOS
+            labelHalos: LABEL_HALOS,
+            connLabelStyle: CONN_LABEL_STYLE
         }, snapshotReplacer);
     }
 
@@ -329,6 +348,7 @@
         if (data.routeClearance !== undefined) setRouteClearance(data.routeClearance);
         if (data.lineJumps !== undefined) setLineJumps(data.lineJumps);
         if (data.labelHalos !== undefined) setLabelHalos(data.labelHalos);
+        if (data.connLabelStyle !== undefined) setConnLabelStyle(data.connLabelStyle);
         state.selectedDevice = null;
         state.selectedConnection = null;
         state.selectedZone = null;
@@ -2919,25 +2939,38 @@
             const verticalOffset = -getVAlignOffset(valign, connSpans.length, lineHeight);
 
             const padding = 3;
+            // Chip ends push out sideways: fully-rounded corners crowd the
+            // first and last glyphs at the box padding, so the sides get
+            // breathing room roughly half the corner radius.
+            const padX = CONN_LABEL_STYLE === 'chip' ? padding + 6 : padding;
             // Measure the real text width (cached) - the old chars×fs×0.6
             // estimate drew a different-sized white box than the export's
             // measured one, a visible WYSIWYG mismatch.
             const textW = measureSpansWidth(connSpans, fs, fontStackOf(conn));
             let bgX, bgY;
-            if (anchor === 'end') { bgX = tx - textW - padding; }
-            else if (anchor === 'start') { bgX = tx - padding; }
-            else { bgX = tx - textW / 2 - padding; }
+            if (anchor === 'end') { bgX = tx - textW - padX; }
+            else if (anchor === 'start') { bgX = tx - padX; }
+            else { bgX = tx - textW / 2 - padX; }
             bgY = ty - fs - padding + 2 - verticalOffset;
             const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             bg.setAttribute('x', bgX);
             bg.setAttribute('y', bgY);
-            bg.setAttribute('width', textW + padding * 2);
+            bg.setAttribute('width', textW + padX * 2);
             bg.setAttribute('height', totalH + padding * 2 + 2);
+            // 'halo' keeps the rect as an invisible hit target - a filled rect
+            // at zero opacity still catches pointer events, so label dragging
+            // and selection behave identically in every style.
             bg.setAttribute('fill', 'white');
-            bg.setAttribute('fill-opacity', '0.85');
-            bg.setAttribute('rx', '2');
+            bg.setAttribute('fill-opacity', CONN_LABEL_STYLE === 'halo' ? '0' : '0.85');
+            bg.setAttribute('rx', CONN_LABEL_STYLE === 'chip' ? Math.min(12, (totalH + padding * 2 + 2) / 2) : '2');
             bg.classList.add('connection-label-bg');
             connGroup.appendChild(bg);
+
+            // Halo style: the same background-color stroke device labels use,
+            // sampled where the label sits (obeys the Label Halos scope -
+            // both off means deliberately bare text).
+            const connHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(mx, my) : null;
+            const connHaloW = Math.min(5, Math.max(2.5, fs * 0.18));
 
             const cff = fontStackOf(conn);
             let lineTx = tx, lineAnchor = anchor;
@@ -2953,6 +2986,12 @@
                 text.setAttribute('font-size', fs);
                 if (cff) text.setAttribute('font-family', cff);
                 text.setAttribute('fill', conn.fontColor || conn.color);
+                if (connHalo) {
+                    text.setAttribute('paint-order', 'stroke');
+                    text.setAttribute('stroke', connHalo);
+                    text.setAttribute('stroke-width', connHaloW);
+                    text.setAttribute('stroke-linejoin', 'round');
+                }
                 text.classList.add('connection-label');
                 lineSpans.forEach(span => {
                     const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
@@ -3051,14 +3090,15 @@
                 const isSelAnn = state.selectedAnnotation &&
                     state.selectedAnnotation.connId === conn.id && state.selectedAnnotation.annId === ann.id;
                 const annColor = ann.fontColor || conn.fontColor || conn.color;
+                const annPadX = CONN_LABEL_STYLE === 'chip' ? padding + 6 : padding;
                 const annBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                annBg.setAttribute('x', annPos.x - annTextW / 2 - padding);
+                annBg.setAttribute('x', annPos.x - annTextW / 2 - annPadX);
                 annBg.setAttribute('y', annPos.y - annFs - padding);
-                annBg.setAttribute('width', annTextW + padding * 2);
+                annBg.setAttribute('width', annTextW + annPadX * 2);
                 annBg.setAttribute('height', annTotalH + padding * 2 + 2);
                 annBg.setAttribute('fill', 'white');
-                annBg.setAttribute('fill-opacity', '0.85');
-                annBg.setAttribute('rx', '2');
+                annBg.setAttribute('fill-opacity', CONN_LABEL_STYLE === 'halo' ? '0' : '0.85');
+                annBg.setAttribute('rx', CONN_LABEL_STYLE === 'chip' ? Math.min(12, (annTotalH + padding * 2 + 2) / 2) : '2');
                 if (isSelAnn) {
                     annBg.setAttribute('stroke', '#0066cc');
                     annBg.setAttribute('stroke-width', '1.5');
@@ -3067,6 +3107,9 @@
                 annBg.classList.add('connection-annotation-bg');
                 annBg.dataset.annId = ann.id;
                 connGroup.appendChild(annBg);
+
+                const annHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(annPos.x, annPos.y) : null;
+                const annHaloW = Math.min(5, Math.max(2.5, annFs * 0.18));
 
                 const aff = fontStackOf(ann);
                 let annX = annPos.x, annAnchor = 'middle';
@@ -3082,6 +3125,12 @@
                     annText.setAttribute('font-size', annFs);
                     if (aff) annText.setAttribute('font-family', aff);
                     annText.setAttribute('fill', annColor);
+                    if (annHalo) {
+                        annText.setAttribute('paint-order', 'stroke');
+                        annText.setAttribute('stroke', annHalo);
+                        annText.setAttribute('stroke-width', annHaloW);
+                        annText.setAttribute('stroke-linejoin', 'round');
+                    }
                     annText.classList.add('connection-annotation');
                     annText.dataset.annId = ann.id;
                     lineSpans.forEach(span => {
@@ -4418,6 +4467,10 @@
             'text stays readable where connections pass behind it (invisible everywhere else). ' +
             '<strong>Label Halos</strong> in Default Settings scopes it per board: all labels, ' +
             'devices &amp; text only (map and floorplan boards), or off.</li>' +
+            '<li><strong>Connection Labels</strong> (Default Settings) picks how connection labels and ' +
+            'annotations dress, per board: the classic white box, a rounded chip, or halo-only - ' +
+            'no box at all, with the same halo treatment device labels get. Whichever reads best ' +
+            'on your layout.</li>' +
             '<li><strong>Dark mode</strong> is surface-aware: labels and lines flip to stay legible.</li>' +
             '</ul>' +
             '<h4>Saving &amp; opening</h4>' +
@@ -7041,6 +7094,14 @@
         renderAllDevices();   // devices + text boxes (shared layer)
         renderAllZones();
         renderAllImages();
+        setDirty(true);
+    });
+    // Connection-label style. Board property - connections own every surface
+    // it touches, so one layer re-renders.
+    document.getElementById('conn-label-style').addEventListener('change', (e) => {
+        pushUndo();
+        setConnLabelStyle(e.target.value);
+        renderAllConnections();
         setDirty(true);
     });
     // Inventory-CSV import spacing (applies to the NEXT import)
@@ -9883,6 +9944,7 @@
         setRouteClearance(ROUTE_CLEARANCE_DEFAULT);
         setLineJumps(true);
         setLabelHalos(LABEL_HALOS_DEFAULT);
+        setConnLabelStyle(CONN_LABEL_STYLE_DEFAULT);
     }
 
     function buildSampleDiagram() {
@@ -12404,6 +12466,7 @@
         setRouteClearance(data.routeClearance !== undefined ? data.routeClearance : ROUTE_CLEARANCE_DEFAULT);
         setLineJumps(data.lineJumps === true);
         setLabelHalos(data.labelHalos !== undefined ? data.labelHalos : LABEL_HALOS_DEFAULT);
+        setConnLabelStyle(data.connLabelStyle !== undefined ? data.connLabelStyle : CONN_LABEL_STYLE_DEFAULT);
         state.groups = Array.isArray(data.groups)
             ? data.groups.filter(g => g && Array.isArray(g.members)).map(g => ({ id: g.id || genId(), members: g.members.slice() }))
             : [];
@@ -13362,6 +13425,7 @@
             ...(ROUTE_CLEARANCE !== ROUTE_CLEARANCE_DEFAULT ? { routeClearance: ROUTE_CLEARANCE } : {}),
             ...(LINE_JUMPS ? { lineJumps: true } : {}),
             ...(LABEL_HALOS !== LABEL_HALOS_DEFAULT ? { labelHalos: LABEL_HALOS } : {}),
+            ...(CONN_LABEL_STYLE !== CONN_LABEL_STYLE_DEFAULT ? { connLabelStyle: CONN_LABEL_STYLE } : {}),
             devices: state.devices.map(d => Object.assign({}, d, { image: ref(d.image), originalImage: ref(d.originalImage) })),
             connections: state.connections,
             zones: state.zones,
@@ -15922,18 +15986,33 @@
                     maxTextW = Math.max(maxTextW, lineW);
                 });
                 const pad = 3;
+                const cPadX = CONN_LABEL_STYLE === 'chip' ? pad + 6 : pad;   // chip sides push out (mirrors renderConnection)
                 const cValign = conn.labelVAlign || 'top';
                 const cVertOff = -getVAlignOffset(cValign, cSpans.length, cLineH);
                 let bgX;
-                if (align === 'right') bgX = tx - maxTextW - pad;
-                else if (align === 'left') bgX = tx - pad;
-                else bgX = tx - maxTextW / 2 - pad;
+                if (align === 'right') bgX = tx - maxTextW - cPadX;
+                else if (align === 'left') bgX = tx - cPadX;
+                else bgX = tx - maxTextW / 2 - cPadX;
                 const bgY = ty - cfs - pad + 2 - cVertOff;
 
-                ctx.fillStyle = 'white';
-                ctx.globalAlpha = 0.85;
-                ctx.fillRect(bgX, bgY, maxTextW + pad * 2, cSpans.length * cLineH + pad * 2 + 2);
-                ctx.globalAlpha = 1;
+                const cBoxH = cSpans.length * cLineH + pad * 2 + 2;
+                if (CONN_LABEL_STYLE !== 'halo') {
+                    ctx.fillStyle = 'white';
+                    ctx.globalAlpha = 0.85;
+                    if (CONN_LABEL_STYLE === 'chip') {
+                        ctx.beginPath();
+                        ctx.roundRect(bgX, bgY, maxTextW + cPadX * 2, cBoxH, Math.min(12, cBoxH / 2));
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(bgX, bgY, maxTextW + cPadX * 2, cBoxH);
+                    }
+                    ctx.globalAlpha = 1;
+                }
+                // Halo style strokes the surface color behind the glyphs -
+                // for a label sitting ON its own line, the halo is what keeps
+                // it readable, so the raster export must carry it.
+                const cHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(mx, my) : null;
+                const cHaloW = Math.min(5, Math.max(2.5, cfs * 0.18));
 
                 const connFillColor = conn.fontColor || conn.color;
                 // Explicit justification (labelAlign) re-anchors lines inside
@@ -15964,6 +16043,12 @@
                         if (span.bold) fStr = 'bold ' + fStr;
                         ctx.font = fStr;
                         ctx.textAlign = 'left';
+                        if (cHalo) {
+                            ctx.strokeStyle = cHalo;
+                            ctx.lineWidth = cHaloW;
+                            ctx.lineJoin = 'round';
+                            ctx.strokeText(span.text, startX, y);
+                        }
                         ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : connFillColor;
                         ctx.fillText(span.text, startX, y);
                         startX += ctx.measureText(span.text).width;
@@ -15997,11 +16082,24 @@
                     annMaxW = Math.max(annMaxW, 20);   // min pill width, matching render + bounds
 
                     const annPad = 3;
-                    ctx.fillStyle = 'white';
-                    ctx.globalAlpha = 0.85;
-                    ctx.fillRect(annPos.x - annMaxW / 2 - annPad, annPos.y - annFs - annPad,
-                        annMaxW + annPad * 2, annSpans.length * annLineH + annPad * 2 + 2);
-                    ctx.globalAlpha = 1;
+                    const annPadX = CONN_LABEL_STYLE === 'chip' ? annPad + 6 : annPad;
+                    const annBoxH = annSpans.length * annLineH + annPad * 2 + 2;
+                    if (CONN_LABEL_STYLE !== 'halo') {
+                        ctx.fillStyle = 'white';
+                        ctx.globalAlpha = 0.85;
+                        if (CONN_LABEL_STYLE === 'chip') {
+                            ctx.beginPath();
+                            ctx.roundRect(annPos.x - annMaxW / 2 - annPadX, annPos.y - annFs - annPad,
+                                annMaxW + annPadX * 2, annBoxH, Math.min(12, annBoxH / 2));
+                            ctx.fill();
+                        } else {
+                            ctx.fillRect(annPos.x - annMaxW / 2 - annPadX, annPos.y - annFs - annPad,
+                                annMaxW + annPadX * 2, annBoxH);
+                        }
+                        ctx.globalAlpha = 1;
+                    }
+                    const aHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(annPos.x, annPos.y) : null;
+                    const aHaloW = Math.min(5, Math.max(2.5, annFs * 0.18));
 
                     const annExplicit = ann.align && ann.align !== 'center' && annSpans.length > 1 ? ann.align : null;
                     const annBlockLeft = annPos.x - annMaxW / 2;
@@ -16024,6 +16122,12 @@
                             if (span.bold) fStr = 'bold ' + fStr;
                             ctx.font = fStr;
                             ctx.textAlign = 'left';
+                            if (aHalo) {
+                                ctx.strokeStyle = aHalo;
+                                ctx.lineWidth = aHaloW;
+                                ctx.lineJoin = 'round';
+                                ctx.strokeText(span.text, startX, y);
+                            }
                             ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : annColor;
                             ctx.fillText(span.text, startX, y);
                             startX += ctx.measureText(span.text).width;

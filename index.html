@@ -309,6 +309,14 @@
                         </select>
                     </div>
                     <div class="default-size-control">
+                        <label title="How connection labels and annotations dress. The classic translucent white box, the same box with honest rounding, or no box at all - halo-only text sits directly on the artwork and stays readable where its own line runs behind it (obeys Label Halos). Saved with the board.">Connection Labels</label>
+                        <select id="conn-label-style" style="width:100%">
+                            <option value="pill" selected>White box (classic)</option>
+                            <option value="chip">Rounded chip</option>
+                            <option value="halo">Halo only</option>
+                        </select>
+                    </div>
+                    <div class="default-size-control">
                         <label title="Extra horizontal room per device on inventory-CSV import - widen for long hostnames that would otherwise clip into each other">Import Spacing - Wider: <span id="import-hspace-label">100%</span></label>
                         <input type="range" id="import-hspace" min="100" max="250" step="10" value="100">
                     </div>
