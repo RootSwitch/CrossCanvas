@@ -3,7 +3,13 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
-**Unreleased (post-4.1.0)**: **Connection Labels** joins Default Settings - a
+**Unreleased (post-4.1.0)**: **Exact stencil names now win imports** - a
+stencil column naming a real roster stencil ("Cloud Router", "ServerCluster")
+used to lose to whichever substring relative (Cloud, Server) sat earlier in
+the roster, because the fuzzy pass ran first. Both import resolvers now try
+an exact, space-blind name match before any substring. Found by a downstream
+consumer importing our own stencil vocabulary back at us and reading what it
+became. **Connection Labels** joins Default Settings - a
 per-board choice of how connection labels and annotations dress. The classic
 translucent white box stays the default (old boards render byte-identically);
 **Rounded chip** keeps the box but rounds it honestly and lets the sides

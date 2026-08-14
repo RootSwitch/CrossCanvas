@@ -185,6 +185,27 @@ async function run(t) {
       'DC-1=' + dev('DC-1').templateId + ' PC-07=' + dev('PC-07').templateId);
   });
 
+  suite('Stencil resolution: exact name beats substring', () => {
+    // "Cloud Router" and "ServerCluster" are real roster stencils that used
+    // to lose to Cloud and Server: the fuzzy substring pass ran first, so
+    // roster order decided. Found by a downstream consumer importing our own
+    // stencil vocabulary back at us and reading what it became.
+    const nameOf = (r) => r && r.template ? r.template.name : null;
+    ok('"Cloud Router" resolves to Cloud Router, not Cloud',
+      nameOf(t.resolveVisioTemplate('Cloud Router')) === 'Cloud Router',
+      nameOf(t.resolveVisioTemplate('Cloud Router')));
+    ok('"ServerCluster" resolves to ServerCluster, not Server',
+      nameOf(t.resolveVisioTemplate('ServerCluster')) === 'ServerCluster',
+      nameOf(t.resolveVisioTemplate('ServerCluster')));
+    ok('space-blind exact: "server cluster" still lands on ServerCluster',
+      nameOf(t.resolveVisioTemplate('server cluster')) === 'ServerCluster',
+      nameOf(t.resolveVisioTemplate('server cluster')));
+    ok('plain "Cloud" is unchanged', nameOf(t.resolveVisioTemplate('Cloud')) === 'Cloud');
+    ok('fuzzy still catches non-exact names',
+      nameOf(t.resolveVisioTemplate('core router')) !== null,
+      nameOf(t.resolveVisioTemplate('core router')));
+  });
+
   suite('Inventory / text parsers', () => {
     const arp = t.parseARPText('  192.168.4.1        00-50-56-a9-dc-34     dynamic');
     ok('parseARPText windows line', arp && arp.records.length === 1 && arp.records[0].fields['IP-Address'] === '192.168.4.1');

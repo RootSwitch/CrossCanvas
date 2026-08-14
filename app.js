@@ -10575,7 +10575,17 @@
                 if (tmpl) return { template: tmpl, wasPlaceholder: false, typeName };
             }
 
-            // 2. Fuzzy match against existing templates (non-default first)
+            // 2. Exact template name, before any substring: "Cloud Router"
+            // must resolve to Cloud Router, not to whichever of Cloud/Router
+            // sits earlier in the roster. Space-blind so "servercluster"
+            // still reaches ServerCluster.
+            const squishName = (s) => String(s).toLowerCase().replace(/[\s_-]+/g, '');
+            const wanted = squishName(typeName);
+            const exact = state.deviceTemplates.find(t => !t.isDefault && squishName(t.name) === wanted) ||
+                state.deviceTemplates.find(t => squishName(t.name) === wanted);
+            if (exact) return { template: exact, wasPlaceholder: false, typeName };
+
+            // 3. Fuzzy match against existing templates (non-default first)
             const lower = typeName.toLowerCase();
             const matches = (t) =>
                 t.name.toLowerCase().includes(lower) || lower.includes(t.name.toLowerCase().replace('default_', ''));
@@ -11472,6 +11482,14 @@
             const tmpl = byName(mappedName);
             if (tmpl) return { template: tmpl, wasPlaceholder: false, typeName };
         }
+        // Exact template name beats any substring: "Cloud Router" must land
+        // on Cloud Router, not on whichever of Cloud/Router the roster lists
+        // first. Space-blind so "servercluster" reaches ServerCluster.
+        const squishName = (s) => String(s).toLowerCase().replace(/[\s_-]+/g, '');
+        const wantedExact = squishName(typeName);
+        const exact = state.deviceTemplates.find(t => !t.isDefault && squishName(t.name) === wantedExact) ||
+            state.deviceTemplates.find(t => squishName(t.name) === wantedExact);
+        if (exact) return { template: exact, wasPlaceholder: false, typeName };
         // Fuzzy: substring match both raw and space-stripped, so multi-word
         // shape names reach compound template names ("azure load balancer" →
         // "LoadBalancer"). Plain includes stays floorless here - this pass
@@ -17141,7 +17159,7 @@
             connectIntentAt, nearestAPIndex,
             // inventory import end-to-end (text/CSV detection -> layout),
             // driven by the REAL Default Settings controls
-            importInventoryCSV,
+            importInventoryCSV, resolveVisioTemplate,
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,
