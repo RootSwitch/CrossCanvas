@@ -1646,9 +1646,28 @@ body.right-pane-open #minimap {
     height: 100%;
     display: block;
 }
+/* The viewport rectangle follows the theme: --se-tint is already the canvas
+   interactive accent (selection handles, attachment points), and "the part of
+   the board you are looking at" is the same class of indicator. It is nudged
+   toward the surface's opposite because the raw tint does not clear 3:1
+   against the minimap background in every theme - measured across all 29:
+   plain tint bottoms out at 2.79 (Sakura on white) and 1.89 in dark mode
+   (Mono, whose palette is all greys, all but vanishing against the dark
+   canvas). The mixes below take those worst cases to 3.78 and 5.02 while
+   keeping each theme's hue.
+   Derived at paint time rather than computed in applyTheme, so the theme
+   picker, the custom device-tint control and the dark-mode toggle all carry
+   it without three code paths having to remember. */
+:root {
+    --se-minimap-view: color-mix(in srgb, var(--se-tint), black 15%);
+}
+body.dark-mode {
+    --se-minimap-view: color-mix(in srgb, var(--se-tint), white 35%);
+}
 #minimap-view {
-    fill: rgba(45, 103, 185, 0.12);
-    stroke: #2d67b9;
+    fill: var(--se-minimap-view);
+    fill-opacity: 0.12;   /* SVG-native, so one colour serves fill and stroke */
+    stroke: var(--se-minimap-view);
     stroke-width: 1.5px;
     vector-effect: non-scaling-stroke;
 }

@@ -937,6 +937,57 @@ function minimapSuite(t) {
     } else {
       skip('clicking the map jumps the view', 'harness iframe has no layout to scroll');
     }
+    // The viewport rectangle follows the theme (--se-tint), which means its
+    // contrast against the minimap background is a property of every theme's
+    // palette rather than of one hardcoded blue. Measured, because eyeballing
+    // 29 themes x 2 modes is how a Mono-in-dark-mode invisible rectangle
+    // ships: the raw tint scores 1.89 there. Asserting the RESULT rather than
+    // the CSS expression means a future theme with a pathological tint fails
+    // here rather than in someone's editor.
+    const parseRGB = (s) => {
+      s = String(s).trim();
+      if (s.startsWith('#')) { const n = parseInt(s.slice(1), 16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+      const nums = (s.match(/[\d.]+/g) || []).map(Number);
+      // color-mix() computes to color(srgb r g b) with 0-1 floats, NOT rgb()
+      // 0-255. Reading those as 0-255 makes every mixed colour near-black and
+      // the whole table plausible-but-wrong - it cost a measurement round.
+      return s.startsWith('color(') ? nums.slice(0,3).map(v => v * 255) : nums.slice(0,3);
+    };
+    const relLum = (c) => { const f = c.map(v => { v /= 255; return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); });
+      return 0.2126*f[0] + 0.7152*f[1] + 0.0722*f[2]; };
+    const ratio = (a, b) => { const l1 = relLum(a), l2 = relLum(b);
+      return (Math.max(l1,l2) + 0.05) / (Math.min(l1,l2) + 0.05); };
+    ok('contrast helper is calibrated (black on white is 21:1)',
+      Math.round(ratio(parseRGB('#000000'), parseRGB('rgb(255,255,255)'))) === 21);
+
+    // The minimap is already shown at this point in the suite - do not toggle,
+    // or the "toggles back off" assertion below inherits the wrong state.
+    const themeKeys = Array.from(idoc.getElementById('theme-select').options).map(o => o.value);
+    const worst = { light: [null, 99], dark: [null, 99] };
+    for (const mode of ['light', 'dark']) {
+      idoc.body.classList.toggle('dark-mode', mode === 'dark');
+      for (const key of themeKeys) {
+        t.applyTheme(key, false);
+        const r = ratio(parseRGB(iwin.getComputedStyle(idoc.getElementById('minimap-view')).stroke),
+                        parseRGB(iwin.getComputedStyle(mm()).backgroundColor));
+        if (r < worst[mode][1]) worst[mode] = [key, +r.toFixed(2)];
+      }
+    }
+    idoc.body.classList.remove('dark-mode');
+    t.applyTheme('classic', false);
+    ok('every theme clears 3:1 in light mode', worst.light[1] >= 3,
+      'worst=' + worst.light[0] + ' ' + worst.light[1]);
+    ok('every theme clears 3:1 in dark mode', worst.dark[1] >= 3,
+      'worst=' + worst.dark[0] + ' ' + worst.dark[1]);
+    // The point of the change: it must actually MOVE with the theme, or a
+    // constant would pass both bars above.
+    t.applyTheme('phosphor', false);
+    const green = iwin.getComputedStyle(idoc.getElementById('minimap-view')).stroke;
+    t.applyTheme('garnet', false);
+    const red = iwin.getComputedStyle(idoc.getElementById('minimap-view')).stroke;
+    t.applyTheme('classic', false);
+    ok('viewport colour tracks the theme', green !== red, green + ' vs ' + red);
+
     btn().click();
     ok('toggles back off', mm().style.display === 'none' &&
       iwin.localStorage.getItem('crosscanvas-minimap') === '0');

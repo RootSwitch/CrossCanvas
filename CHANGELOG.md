@@ -3,7 +3,16 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
-**Unreleased (post-4.1.0)**: **Exact stencil names now win imports** - a
+**Unreleased (post-4.1.0)**: **The minimap viewport follows the theme.** Its
+rectangle was a fixed blue in a 29-theme app; it now derives from `--se-tint`,
+the same accent selection handles and attachment points already use. The raw
+tint does not clear the 3:1 non-text contrast bar in every palette - measured
+across all 29 in both modes, it bottoms out at 2.79 (Sakura on white) and 1.89
+(Mono in dark mode, where an all-grey palette all but vanishes against the dark
+canvas) - so it is nudged toward the surface's opposite, taking the worst cases
+to 3.78 and 5.02 while keeping each theme's hue. Derived at paint time, so the
+theme picker, the custom device-tint control and the dark-mode toggle all carry
+it. Classic is visually unchanged. **Exact stencil names now win imports** - a
 stencil column naming a real roster stencil ("Cloud Router", "ServerCluster")
 used to lose to whichever substring relative (Cloud, Server) sat earlier in
 the roster, because the fuzzy pass ran first. Both import resolvers now try
