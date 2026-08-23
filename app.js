@@ -4309,7 +4309,7 @@
             '<h4>Credits</h4>' +
             '<p>The bundled stencil art derives from the <strong>Affinity</strong> network ' +
             'symbol set by ecceman (github.com/ecceman/affinity, released under The ' +
-            'Unlicense) - much of CrossCanvas’s visual style is inspired by it. ' +
+            'Unlicense) - much of CrossCanvas\'s visual style is inspired by it. ' +
             'Several infrastructure stencils derive from <strong>Tabler Icons</strong> ' +
             '(github.com/tabler/tabler-icons, MIT License, © Paweł Kuna).</p>',
         quickStart:
@@ -4497,18 +4497,18 @@
             'Hand-routed connector paths convert to native routes wherever the drawn shape can be ' +
             'reproduced exactly, so they keep their shape AND follow devices when you move them; ' +
             'routes too intricate to express stay as drawn with waypoint handles. ' +
-            'CrossCanvas’s own draw.io exports round-trip: device icons and Device Details come back intact. ' +
-            'Your own stencils outrank the bundled set: if a Device Library import’s name matches a ' +
-            'shape (an imported “Cisco Switch” icon vs. incoming switch shapes), imports use yours.</p>' +
+            'CrossCanvas\'s own draw.io exports round-trip: device icons and Device Details come back intact. ' +
+            'Your own stencils outrank the bundled set: if a Device Library import\'s name matches a ' +
+            'shape (an imported "Cisco Switch" icon vs. incoming switch shapes), imports use yours.</p>' +
             '<p><strong>Import &amp; Merge</strong> adds a diagram to the current canvas instead of ' +
-            'replacing it - the incoming content lands to the right of what’s there, with fresh ids, ' +
+            'replacing it - the incoming content lands to the right of what\'s there, with fresh ids, ' +
             'and the canvas keeps its own title. Merge as many files as you like (any mix of formats) ' +
             'to marry diagrams together; one undo removes the last merge.</p>' +
             '<p><strong>Convert Diagrams</strong> batch-converts a multi-selection of .gliffy and ' +
             '.drawio files to .xcanvas - same importers, same fidelity as opening each by hand ' +
             '(multi-page draw.io files take their busiest page, noted in the roll-up). On Chrome/Edge ' +
             'it writes into a folder you pick; elsewhere each file downloads. A prompt offers to keep ' +
-            'each file’s source colors (the default idiom) or apply <strong>Recolor to Theme</strong> ' +
+            'each file\'s source colors (the default idiom) or apply <strong>Recolor to Theme</strong> ' +
             '(with the same per-kind picker) to every converted diagram in one pass. The last converted diagram stays on the canvas ' +
             'for spot-checking, and failures are listed in the roll-up.</p>' +
             '<h4>Exporting</h4>' +
@@ -10201,12 +10201,12 @@
         });
         state.textBoxes.push({
             id: genId(), x: 80, y: 60,
-            text: 'Legend:\n— Fiber uplink\n— IPsec VPN\n— Wireless',
+            text: 'Legend:\n- Fiber uplink\n- IPsec VPN\n- Wireless',
             fontSize: 14, fontColor: DEFAULT_FONT_COLOR, textAlign: 'left',
             lineFormats: [{ bold: true, italic: false }, {}, {}, {}],
             spans: [
                 [{ text: 'Legend:', bold: true, italic: false }],
-                [{ text: '— Fiber uplink', bold: false, italic: false, color: FIBER }],
+                [{ text: '- Fiber uplink', bold: false, italic: false, color: FIBER }],
                 [{ text: '- IPsec VPN', bold: false, italic: false, color: VPN }],
                 [{ text: '- Wireless', bold: false, italic: false, color: WIFI }]
             ]
@@ -11138,7 +11138,7 @@
                 } else if (!data && /<mxfile|<mxGraphModel/.test(txt)) {
                     const r = await importDrawioText(txt, file.name, true);
                     stats = r.stats;
-                    if (r.pageCount > 1) pageNote = `, page “${r.pageName}” of ${r.pageCount}`;
+                    if (r.pageCount > 1) pageNote = `, page "${r.pageName}" of ${r.pageCount}`;
                 } else {
                     throw new Error('not a Gliffy or draw.io file');
                 }
