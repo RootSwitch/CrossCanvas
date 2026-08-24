@@ -94,6 +94,11 @@ full change history, see `CHANGELOG.md`; for design rationale, `NOTES.md`.
   to hand Claude Code, Cline, or a local model - the CSV and `.xcanvas`
   formats, stencil names, and layout conventions, with no need to read the
   app source.
+- **Drawing your own stencil?** [docs/stencil-authoring.md](docs/stencil-authoring.md)
+  covers the 300x300 glyph box, the one-flat-color rule that decides whether
+  Device Color can recolor your icon, the wrapper that turns an existing line
+  icon into a stencil in minutes, and why tracing a bitmap produces a 100 KB
+  file when 1.5 KB is typical.
 
 ## Quick start
 
