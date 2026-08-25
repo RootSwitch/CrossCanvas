@@ -1267,11 +1267,41 @@ function waypointConvertSuite(t) {
       if (Math.abs(rendered[i].x-rendered[i+1].x) >= 4 ||
           Math.abs(rendered[i].y-rendered[i+1].y) >= 4) live++;
     }
-    const handles = idoc.getElementById('wc').querySelectorAll('.conn-bend-handle').length;
+    const handles = idoc.getElementById('conn-handles').querySelectorAll('.conn-bend-handle').length;
     ok('setup: the collapse left a degenerate interior segment',
       live < rendered.length - 3, live + ' live of ' + (rendered.length - 3));
     ok('collapsed segments render no bend handle', handles === live,
       handles + ' handles for ' + live + ' live segments');
+
+    // Endpoint handles: TRUE anchor, in the overlay, cleared on deselect.
+    // Two real bugs pinned here. (1) trimPointsForMarker mutates the endpoint
+    // objects in place for arrowed connections, and the handles used to draw
+    // from those objects - so the dot sat one arrow-length off the device,
+    // right where a bottom label lives. (2) Handles rendered inside the
+    // connection's own group, UNDER devices-layer, so an overlapping device
+    // label swallowed their mousedown; they now render in #conn-handles
+    // inside #overlay-layer, above every label.
+    load(500, 400, null);
+    const c5 = t.state.connections[0];
+    delete c5.waypoints;
+    c5.endArrow = 'arrow';
+    t.state.selectedConnection = 'wc';
+    t.recolorAllToTheme({ silent: true, devices: false, zones: false, textBoxes: false });
+    const hg = idoc.getElementById('conn-handles');
+    ok('selected-connection handles render in the overlay layer',
+      !!hg && !!hg.closest('#overlay-layer'));
+    const toAP = t.resolveConnEndpoint(c5, 'to');
+    const toH = hg && Array.from(hg.querySelectorAll('.conn-endpoint-handle'))
+      .find(h => h.dataset.end === 'to');
+    ok('an arrowed endpoint handle sits on the attachment point, not the arrow base',
+      !!toH && Math.abs(parseFloat(toH.getAttribute('cx')) - toAP.x) < 0.5
+            && Math.abs(parseFloat(toH.getAttribute('cy')) - toAP.y) < 0.5,
+      toH ? (toH.getAttribute('cx') + ',' + toH.getAttribute('cy') + ' vs AP ' +
+             Math.round(toAP.x) + ',' + Math.round(toAP.y)) : 'no handle');
+    t.state.selectedConnection = null;
+    t.recolorAllToTheme({ silent: true, devices: false, zones: false, textBoxes: false });
+    ok('deselecting clears the overlay handles',
+      idoc.getElementById('conn-handles').children.length === 0);
   });
 }
 

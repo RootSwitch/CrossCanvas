@@ -2844,6 +2844,35 @@
         return { t: bestAccum / totalLen, distance: bestDist };
     }
 
+    // Selected-connection handles render in the OVERLAY layer, not in the
+    // connection's own group. Layer order is connections < zone-labels <
+    // devices < overlay, so anything inside the connection group paints -
+    // and hit-tests - UNDER every device and its label; a label overlapping
+    // a handle swallowed its hover and mousedown, and the handle was
+    // unreachable until the line was dragged out from under the text. The
+    // overlay already hosts the marquee and the temp drag line, is stripped
+    // from exports, and stays out of the minimap - all the right properties
+    // for selection chrome. One singleton group, rebuilt whenever the
+    // selected connection re-renders; renderAllConnections clears it first
+    // so deleting the selected connection cannot leave stale dots behind.
+    let connHandlesEl = null;
+    function connHandlesGroup(connId) {
+        if (!connHandlesEl || !connHandlesEl.isConnected) {
+            connHandlesEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            connHandlesEl.id = 'conn-handles';
+            overlayLayer.appendChild(connHandlesEl);
+        }
+        connHandlesEl.innerHTML = '';
+        connHandlesEl.dataset.connId = connId;
+        return connHandlesEl;
+    }
+    function clearConnHandles(connId) {
+        if (connHandlesEl && (!connId || connHandlesEl.dataset.connId === connId)) {
+            connHandlesEl.innerHTML = '';
+            connHandlesEl.dataset.connId = '';
+        }
+    }
+
     // --- Connection Rendering ---
     function renderConnection(conn) {
         let existing = document.getElementById(conn.id);
@@ -2851,9 +2880,24 @@
 
         const start = resolveConnEndpoint(conn, 'from');
         const end = resolveConnEndpoint(conn, 'to');
-        if (!start || !end) return;
+        if (!start || !end) { clearConnHandles(conn.id); return; }
+
+        const handlesGroup = state.selectedConnection === conn.id
+            ? connHandlesGroup(conn.id) : null;
+        if (!handlesGroup) clearConnHandles(conn.id);
 
         const points = connRoutePoints(conn, start, end);
+        // TRUE attachment points, captured before the marker trim below.
+        // start and end go into `points` BY REFERENCE (both routers build the
+        // array from the objects themselves), and trimPointsForMarker mutates
+        // its endpoints in place to pull the path back so the arrow extends
+        // outward - so after an end-arrow trim, `end` IS the arrow base, one
+        // arrow-length off the device. The endpoint handles must sit where
+        // the connection attaches, not where the line stops for the marker:
+        // drawn at the trimmed point they sat far enough from the device to
+        // land under its label, which is where handles go to be unclickable.
+        const startAnchor = { x: start.x, y: start.y };
+        const endAnchor = { x: end.x, y: end.y };
 
         // Trim path ends so arrow markers extend outward from attachment points;
         // the marker takes the actually-trimmed size so it never overshoots.
@@ -3033,7 +3077,7 @@
                 handle.dataset.segIndex = String(i);
                 handle.dataset.isVertical = isVert ? '1' : '0';
                 handle.style.cursor = isVert ? 'ew-resize' : 'ns-resize';
-                connGroup.appendChild(handle);
+                handlesGroup.appendChild(handle);
             }
         }
 
@@ -3053,7 +3097,7 @@
                 handle.dataset.connId = conn.id;
                 handle.dataset.wpIndex = String(i);
                 handle.style.cursor = 'move';
-                connGroup.appendChild(handle);
+                handlesGroup.appendChild(handle);
             });
         }
 
@@ -3061,8 +3105,8 @@
         // A FLOATING endpoint draws hollow: it belongs to the device, not to
         // the specific point it happens to be landing on right now.
         if (state.selectedConnection === conn.id) {
-            [{ which: 'from', p: start, floats: conn.fromFloating },
-             { which: 'to', p: end, floats: conn.toFloating }].forEach(ep => {
+            [{ which: 'from', p: startAnchor, floats: conn.fromFloating },
+             { which: 'to', p: endAnchor, floats: conn.toFloating }].forEach(ep => {
                 const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 handle.setAttribute('cx', ep.p.x);
                 handle.setAttribute('cy', ep.p.y);
@@ -3071,7 +3115,7 @@
                 if (ep.floats) handle.classList.add('conn-endpoint-floating');
                 handle.dataset.connId = conn.id;
                 handle.dataset.end = ep.which;
-                connGroup.appendChild(handle);
+                handlesGroup.appendChild(handle);
             });
         }
 
@@ -3150,6 +3194,7 @@
     }
 
     function renderAllConnections() {
+        clearConnHandles();
         connectionsLayer.innerHTML = '';
         jumpRouteCache = LINE_JUMPS ? new Map() : null;
         try {
