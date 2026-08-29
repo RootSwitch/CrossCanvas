@@ -1773,6 +1773,79 @@ function connectIntentSuite(t) {
 // centre (so old boards are untouched), a stored value is HONOURED by the same
 // anchor every consumer calls, and the value survives a save/load round trip.
 function labelSlideSuite(t) {
+  suite('Add Space (whole-document translation)', () => {
+    const AP = (w,h) => [{rx:w/2,ry:0},{rx:w,ry:0},{rx:w,ry:h/2},{rx:w,ry:h},{rx:w/2,ry:h},{rx:0,ry:h},{rx:0,ry:h/2},{rx:0,ry:0}];
+    const box = (id,x,y) => ({ id, x, y, w:60, h:60, label:id, labelPosition:'bottom', fontSize:14,
+      fontColor:'#333333', tintColor:null, spans:[[{text:id,bold:false,italic:false}]],
+      lineFormats:[{bold:false,italic:false}], attachmentPoints:AP(60,60), fields:{} });
+    const cbase = (id) => ({ id, color:'#333333', thickness:2, dash:'solid', routing:'rounded',
+      label:'', labelPosition:'top', labelVAlign:'top', fontSize:14, fontColor:'#333333',
+      lineFormats:[], spans:[], startArrow:'none', endArrow:'none', annotations:[] });
+
+    // ASYMMETRIC on purpose, and that is the whole point of the fixture. A
+    // manual bend stores ONE number, and its axis is re-derived from the route
+    // rather than stored - so a bend translated along the wrong axis still
+    // lands on a plausible value whenever dx === dy. Under a square shift the
+    // bug this guards is invisible.
+    const DX = 37, DY = 91;
+
+    t.applyDiagramData({ version:6, diagramTitle:'space', diagramVersion:1,
+      devices:[box('a',100,200), box('b',500,400)],
+      connections:[
+        Object.assign(cbase('bent'), { fromDevice:'a', fromAP:2, toDevice:'b', toAP:6,
+          waypoints:[{x:350,y:230},{x:350,y:430}] }),
+        Object.assign(cbase('float'), { fromDevice:'a', fromAP:4, toDevice:null, toAP:null,
+          toPoint:{x:260,y:640} })
+      ],
+      zones:[{ id:'z', shape:'rectangle', x:60, y:120, w:600, h:400, label:'zone',
+        labelPosition:'top-inside', labelVAlign:'top', fontSize:15, fontColor:'#2d67b9',
+        lineFormats:[{bold:true,italic:false}], spans:[[{text:'zone',bold:true,italic:false}]],
+        fill:'#e8f4fd', borderColor:'#2d67b9', opacity:1, attachmentPoints:AP(600,400) }],
+      textBoxes:[{ id:'tb', x:700, y:80, text:'note', fontSize:14, fontColor:'#333333',
+        textAlign:'left', lineFormats:[{bold:false,italic:false}],
+        spans:[[{text:'note',bold:false,italic:false}]] }],
+      images:[], groups:[], deviceTemplates:[], imageTable:{}, nextId:9 });
+
+    const bent = t.state.connections.find(c => c.id === 'bent');
+    ok('the fixture really carries a native bend to translate',
+      t.convertWaypointsToBends(bent) === true && !!bent.bends && !bent.waypoints,
+      'bends=' + JSON.stringify(bent && bent.bends));
+
+    const route = c => { const s = t.resolveConnEndpoint(c,'from'), e = t.resolveConnEndpoint(c,'to');
+      return t.connRoutePoints(c, s, e).map(p => [Math.round(p.x), Math.round(p.y)]); };
+    const dev = id => t.state.devices.find(d => d.id === id);
+    const before = t.state.connections.map(route);
+    const beforeA = [dev('a').x, dev('a').y];
+    const beforeZ = [t.state.zones[0].x, t.state.zones[0].y];
+    const beforeT = [t.state.textBoxes[0].x, t.state.textBoxes[0].y];
+
+    // Reclaiming further than the content allows must be REFUSED, not clamped,
+    // so the guard reports the true headroom off live geometry.
+    const bounds = t.contentMinBounds();
+    eq('contentMinBounds sees the leftmost/topmost object', [bounds.minX, bounds.minY], [60, 80]);
+
+    t.translateWholeDocument(DX, DY);
+
+    eq('devices move', [dev('a').x, dev('a').y], [beforeA[0]+DX, beforeA[1]+DY]);
+    eq('zones move', [t.state.zones[0].x, t.state.zones[0].y], [beforeZ[0]+DX, beforeZ[1]+DY]);
+    eq('text boxes move', [t.state.textBoxes[0].x, t.state.textBoxes[0].y], [beforeT[0]+DX, beforeT[1]+DY]);
+    eq('a free-floating endpoint moves', [t.state.connections[1].toPoint.x, t.state.connections[1].toPoint.y],
+      [260+DX, 640+DY]);
+
+    // The load-bearing assertion: the DRAWN line is the old line, rigidly
+    // translated. One check catches a bend written to the wrong axis, a
+    // waypoint left behind, and a floating end that failed to follow.
+    const after = t.state.connections.map(route);
+    eq('every routed polyline is the old one, rigidly translated',
+      after, before.map(pts => pts.map(p => [p[0]+DX, p[1]+DY])));
+
+    // Round trip: the reverse shift restores the document exactly, which is
+    // what makes undo and a mistyped number cheap.
+    t.translateWholeDocument(-DX, -DY);
+    eq('the reverse shift restores the geometry exactly', t.state.connections.map(route), before);
+    eq('...and the objects', [dev('a').x, dev('a').y], beforeA);
+  });
+
   suite('Sliding connection labels (conn.labelT)', () => {
     t.applyDiagramData(twoBoxDoc(120, 400, 420, 120, 0, 6));
     const conn = t.state.connections[0];

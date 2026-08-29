@@ -219,6 +219,13 @@ See the PingCanvas and SNMPCanvas guides for the poller and metric-feed setup.
 - **Arrange (z-order)** - bring to front / send to back / step forward / backward
   from the toolbar, Layers menu, or right-click menu. Devices and text boxes
   interleave in a shared layer.
+- **Add Space** (Edit menu) - move the whole diagram at once to open room at the
+  top or left. The canvas grows right and down on its own, so those two sides are
+  the ones you have to make, and doing it by hand means select-all and drag.
+  Manual bends, imported waypoints and free-floating connection ends all travel
+  with it, and the whole shift is a single undo step. Negative numbers reclaim
+  space, and are refused rather than clamped if they would push anything off the
+  canvas.
 - **Layers menu** - show/hide or lock each canvas *tier* (Zones, Connections,
   Images, Devices & Text). Locking Zones, for example, lets you rubber-band the
   devices inside a zone without grabbing the zone itself. Tier state is

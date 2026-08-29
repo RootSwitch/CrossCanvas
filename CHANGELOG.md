@@ -3,6 +3,27 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Add Space moves the whole diagram at once.** A
+diagram that grows by discovery keeps finding sections that belong above or left
+of what is drawn, and the canvas only ever grows right and down - `updateCanvasSize`
+pins the viewBox origin at `0 0`, so a negative coordinate is simply off it. The
+only way to open room on those sides was select-all and drag, a chore on a
+sprawling document and one that can nudge a waypoint nobody meant to touch.
+Edit > Add Space asks how far and performs the same whole-document translation
+Merge already used, so manual bends travel correctly - a bend stores one number
+whose axis is re-derived from the route rather than stored, so it has to move
+along the axis its segment rides, not the one that happens to be handy. Imported
+waypoints and free-floating ends move too, the view scrolls to follow so the
+room simply appears (where the canvas overflows that axis, which is the only
+place scrolling can help), and the whole shift is one undo step. Negative numbers
+reclaim space and are REFUSED rather than clamped when they would push content
+past the origin: quietly trimming the number somebody typed is how they stop
+trusting the next one. Pinned by a suite that translates by an ASYMMETRIC 37x91
+and asserts every routed polyline is the old one rigidly translated - under a
+square shift a bend written to the wrong axis still lands on a plausible value,
+and the round-trip check alone cannot see it either, because a consistently
+wrong axis cancels itself out on the way back.
+
 **Unreleased (post-4.1.0)**: **The minimap viewport follows the theme.** Its
 rectangle was a fixed blue in a 29-theme app; it now derives from `--se-tint`,
 the same accent selection handles and attachment points already use. The raw

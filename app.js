@@ -4048,6 +4048,7 @@
         },
         // Merge adds to the canvas rather than replacing it, so no discard prompt
         'merge': () => document.getElementById('file-merge').click(),
+        'add-space': () => addSpaceDialog(),
         'load-sample': () => loadSampleDiagram(),
         'load-complex-sample': () => loadComplexSampleDiagram(),
         'save': () => saveDiagram(),
@@ -4484,6 +4485,11 @@
             'heights by dragging one\'s top to the other\'s). Hold <kbd>Alt</kbd> to bypass.</li>' +
             '<li><strong>Align menu</strong> - align or evenly distribute a multi-selection.</li>' +
             '<li><strong>Arrange</strong> - bring to front / send to back / step forward / backward.</li>' +
+            '<li><strong>Add Space</strong> (Edit menu) - move the whole diagram at once to open ' +
+            'room at the top or left, which is the only way to get it: the canvas grows right and ' +
+            'down, so those two sides are made by shifting everything. Bends, waypoints and ' +
+            'floating ends travel with it, and it is one undo step. Negative numbers reclaim ' +
+            'space.</li>' +
             '<li><strong>Layers menu</strong> - show/hide or lock each tier (Zones, Connections, ' +
             'Images, Devices &amp; Text). Locking Zones lets you marquee the devices inside one ' +
             'without grabbing the zone.</li>' +
@@ -12659,6 +12665,105 @@
         applyBendShifts(bendShifts, dx, dy);
     }
 
+    // --- Add space -------------------------------------------------------
+    // A diagram that grows by DISCOVERY keeps finding sections that belong
+    // above or left of what is already drawn, and the canvas only grows right
+    // and down - updateCanvasSize pins the viewBox origin at 0 0, so anything
+    // at a negative coordinate is simply off it. The only way to open room on
+    // those two sides is to move everything, which by hand means select-all
+    // and drag: a chore on a sprawling document, and one that can nudge a
+    // waypoint nobody meant to touch.
+    //
+    // The move itself is the whole-document translation Merge already performs,
+    // so manual bends (an axis value keyed to the natural route, whose axis is
+    // re-derived rather than stored) and floating endpoints travel correctly.
+    // The only new part is asking how far.
+    function contentMinBounds() {
+        let minX = Infinity, minY = Infinity;
+        const see = (x, y) => { if (x < minX) minX = x; if (y < minY) minY = y; };
+        [state.devices, state.zones, state.textBoxes, state.images].forEach(arr =>
+            arr.forEach(o => see(o.x, o.y)));
+        // Free-floating ends and imported waypoints are absolute and can sit
+        // outside every box on the canvas, so they bound the reclaim too.
+        state.connections.forEach(c => {
+            if (c.fromPoint) see(c.fromPoint.x, c.fromPoint.y);
+            if (c.toPoint) see(c.toPoint.x, c.toPoint.y);
+            if (c.waypoints) c.waypoints.forEach(w => see(w.x, w.y));
+        });
+        return { minX, minY };
+    }
+
+    async function addSpaceDialog() {
+        const empty = !state.devices.length && !state.zones.length && !state.textBoxes.length &&
+                      !state.images.length && !state.connections.length;
+        if (empty) {
+            showDialog({ title: 'Add Space', body: 'There is nothing on the canvas to move yet.' });
+            return;
+        }
+        let leftIn = null, topIn = null;
+        const go = await showDialog({
+            title: 'Add Space',
+            body: () => {
+                const box = document.createElement('div');
+                const intro = document.createElement('div');
+                intro.className = 'dialog-line';
+                intro.textContent = 'Moves everything on the canvas to open room at the top or ' +
+                    'left. Negative numbers reclaim space. Counts as one undo step.';
+                box.appendChild(intro);
+                const row = (label) => {
+                    const d = document.createElement('div');
+                    d.className = 'dialog-line';
+                    const l = document.createElement('label');
+                    l.textContent = label;
+                    l.style.cssText = 'display:inline-block;min-width:120px';
+                    const inp = document.createElement('input');
+                    inp.type = 'number';
+                    inp.step = '20';
+                    inp.value = '200';
+                    inp.style.width = '90px';
+                    d.append(l, inp);
+                    box.appendChild(d);
+                    return inp;
+                };
+                leftIn = row('Space at left');
+                topIn = row('Space at top');
+                setTimeout(() => leftIn.select(), 0);
+                return box;
+            },
+            buttons: [{ label: 'Cancel', value: null },
+                      { label: 'Add Space', value: true, primary: true }]
+        });
+        if (!go) return;
+        const dx = Math.round(Number(leftIn.value) || 0);
+        const dy = Math.round(Number(topIn.value) || 0);
+        if (!dx && !dy) return;
+
+        // REFUSED, not clamped. A negative shift past the origin puts content
+        // where the viewBox cannot reach it, and quietly trimming the number
+        // somebody typed is how they stop trusting the next one.
+        const { minX, minY } = contentMinBounds();
+        const tooFar = (d, min, side) => (d < 0 && min + d < 0)
+            ? 'Reclaiming ' + (-d) + ' at the ' + side + ' would push content off the canvas.\n' +
+              'The most you can reclaim there is ' + Math.floor(min) + '.'
+            : null;
+        const refusal = tooFar(dx, minX, 'left') || tooFar(dy, minY, 'top');
+        if (refusal) { showDialog({ title: 'Add Space', body: refusal }); return; }
+
+        pushUndo();
+        translateWholeDocument(dx, dy);
+        renderAll();
+        // Scroll by the same distance so the view stays over the same content
+        // and the room simply appears. Best-effort by nature: an axis the
+        // canvas does not overflow has nothing to scroll, so on a diagram
+        // narrower than the window the content does visibly slide right. There
+        // is no fixing that from here - the viewBox starts at 0 0, so the
+        // origin is always on screen.
+        const container = document.getElementById('canvas-container');
+        container.scrollLeft += dx * state.zoom;
+        container.scrollTop += dy * state.zoom;
+        setDirty(true);
+    }
+
     // Re-mint every object id in the (freshly imported) document and fix the
     // references. Needed for native .xcanvas/.netdraw merges, whose files
     // carry their own id space; harmless for the converters, which mint via
@@ -17208,6 +17313,7 @@
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,
+            translateWholeDocument, contentMinBounds,
             buildComplexSampleDiagram,
             // live theme constants for assertions
             consts: () => ({ STENCIL_FRAME_BLUE, DEFAULT_CONN_COLOR, DEFAULT_DEVICE_TINT,
