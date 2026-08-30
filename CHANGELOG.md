@@ -3,6 +3,27 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Hit tolerance is a screen budget, and the nearest
+thing wins.** Double-click targeting on densely packed connections was erratic,
+and two separate faults were doing it. The tolerances were raw CONTENT units - a
+30 radius around an annotation, 15 perpendicular to a line - so they never
+shrank as you zoomed in. At 400% that 30 becomes 120 SCREEN pixels around a
+label a few pixels wide, which means zooming IN to click more precisely made the
+target relatively larger, not smaller: on six parallel fibre runs the
+neighbouring strand's annotation sat comfortably inside the target of the one
+being aimed at. Both are now quoted in screen pixels and divided by the zoom, so
+a hit target stays the size of a fingertip on the glass at any magnification.
+The second fault is why it felt random rather than merely loose: both searches
+took the FIRST candidate inside the tolerance and stopped, so among overlapping
+candidates the winner was decided by the order objects happen to sit in the
+file. Both now keep the closest. The double-click travel allowance was content
+units too, letting the two clicks land 20 screen pixels apart at 400% - enough
+to start on one strand and finish on its neighbour before any tolerance got a
+say. Annotations still outrank lines whenever one is in range, and that ordering
+is deliberate rather than a tie-break: an annotation sits ON its line, so the
+line is always nearer, and pure nearest-wins across both kinds would make
+editing an existing annotation impossible.
+
 **Unreleased (post-4.1.0)**: **Clicking the canvas takes the keyboard back.**
 The properties panel is full of form controls - the AP slider, the label fields,
 the dropdowns - and both the keydown and paste handlers open by returning when

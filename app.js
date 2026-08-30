@@ -5543,7 +5543,12 @@
         const dt = now - lastMousedownInfo.time;
         lastMousedownInfo = { time: now, x: point.x, y: point.y };
 
-        if (dt < 400 && Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+        // The travel allowance is screen pixels too, for the same reason: `point`
+        // is in content units, so a flat 5 let the two clicks land 20 screen
+        // pixels apart at 400% - far enough to start on one fibre strand and
+        // finish on its neighbour, handing a perfectly aimed double-click to the
+        // wrong line before any tolerance above got a say.
+        if (dt < 400 && Math.abs(dx) < hitSlack(5) && Math.abs(dy) < hitSlack(5)) {
             // This is a double-click - fire inline edit logic
             // Clear any drag state set by the first mousedown
             state.dragging = null;
@@ -16834,13 +16839,28 @@
         });
     }
 
+    // How far from a thing still counts as clicking it, in CONTENT units.
+    //
+    // The budget is quoted in SCREEN pixels and divided by the zoom, because a
+    // hit target is a physical thing: it should stay the size of a fingertip on
+    // the glass no matter how far in you are. These tolerances used to be raw
+    // content constants, which is fine at 100% and absurd anywhere else - at
+    // 400% the annotation radius of 30 became 120 SCREEN pixels, a target
+    // several times wider than the label it guarded. On a diagram of six
+    // parallel fibre runs that meant the neighbouring strand's annotation sat
+    // comfortably inside the target of the one being aimed at, and zooming IN
+    // to be more precise made the problem worse rather than better.
+    const hitSlack = (screenPx) => screenPx / (state.zoom || 1);
+
     function handleCanvasDblClick(point) {
+        const ANN_SLACK = hitSlack(30);    // around an annotation's anchor
+        const LINE_SLACK = hitSlack(15);   // perpendicular to a connection line
         // Use coordinate hit-testing (DOM elements may have been recreated by selectDevice on mousedown)
         const onConnectionLine = (p) => state.connections.some(conn => {
             const s = resolveConnEndpoint(conn, 'from');
             const e = resolveConnEndpoint(conn, 'to');
             if (!s || !e) return false;
-            return getNearestT(connRoutePoints(conn, s, e), p.x, p.y).distance < 15;
+            return getNearestT(connRoutePoints(conn, s, e), p.x, p.y).distance < LINE_SLACK;
         });
         const lineHit = onConnectionLine(point);
 
@@ -16937,7 +16957,37 @@
         // Check for connection annotation or line hit via coordinate-based testing.
         // resolveConnEndpoint (not findNode) so free-ended connections - those
         // drawn from/to empty canvas, with no device at an end - are annotatable.
+        // NEAREST wins, not first-in-array. Both searches here used to stop at
+        // the first candidate inside the tolerance, so when several overlapped -
+        // exactly the case on a dense bundle - the winner was decided by the
+        // order objects happen to sit in the file, and the click appeared to
+        // jump to a line or a label the cursor was nowhere near. Deciding the
+        // target BEFORE acting also means the two searches cannot disagree.
+        //
+        // Annotations still outrank lines whenever one is in range, and that
+        // ordering is deliberate rather than a tie-break: an annotation sits ON
+        // its line, so the line is always the closer of the two, and pure
+        // nearest-wins would make editing an existing annotation impossible.
+        let bestAnn = null, bestLine = null;
         for (const conn of state.connections) {
+            const s0 = resolveConnEndpoint(conn, 'from');
+            const e0 = resolveConnEndpoint(conn, 'to');
+            if (!s0 || !e0) continue;
+            const pts = connRoutePoints(conn, s0, e0);
+            for (const ann of (conn.annotations || [])) {
+                const ap = getPointAlongPath(pts, ann.position);
+                const d = Math.hypot(point.x - ap.x, point.y - ap.y);
+                if (d < ANN_SLACK && (!bestAnn || d < bestAnn.dist)) bestAnn = { conn, ann, dist: d };
+            }
+            const nr = getNearestT(pts, point.x, point.y);
+            if (nr.distance < LINE_SLACK && (!bestLine || nr.distance < bestLine.dist)) {
+                bestLine = { conn, dist: nr.distance };
+            }
+        }
+        const targetConn = bestAnn ? bestAnn.conn : (bestLine ? bestLine.conn : null);
+
+        for (const conn of state.connections) {
+            if (conn !== targetConn) continue;
             const startPt = resolveConnEndpoint(conn, 'from');
             const endPt = resolveConnEndpoint(conn, 'to');
             if (!startPt || !endPt) continue;
@@ -16945,15 +16995,7 @@
 
             // Check if click is near an existing annotation
             if (conn.annotations && conn.annotations.length > 0) {
-                let hitAnn = null;
-                for (const ann of conn.annotations) {
-                    const annPos = getPointAlongPath(cPoints, ann.position);
-                    const dist = Math.sqrt((point.x - annPos.x) ** 2 + (point.y - annPos.y) ** 2);
-                    if (dist < 30) {
-                        hitAnn = ann;
-                        break;
-                    }
-                }
+                const hitAnn = bestAnn && bestAnn.conn === conn ? bestAnn.ann : null;
                 if (hitAnn) {
                     const annPos = getPointAlongPath(cPoints, hitAnn.position);
                     const annFs = hitAnn.fontSize || DEFAULT_FONT_SIZE;
@@ -17012,7 +17054,7 @@
 
             // Check if click is near the connection line itself (for creating new annotation)
             const nearest = getNearestT(cPoints, point.x, point.y);
-            if (nearest.distance < 15) {
+            if (nearest.distance < LINE_SLACK) {
                 // Check if this is near the main label area first
                 if (conn.label) {
                     const la = connLabelAnchor(cPoints, conn);
@@ -17359,7 +17401,7 @@
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,
-            returnKeyboardToCanvas,
+            returnKeyboardToCanvas, hitSlack, handleCanvasDblClick,
             translateWholeDocument, contentMinBounds,
             buildComplexSampleDiagram,
             // live theme constants for assertions

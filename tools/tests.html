@@ -1773,6 +1773,85 @@ function connectIntentSuite(t) {
 // centre (so old boards are untouched), a stored value is HONOURED by the same
 // anchor every consumer calls, and the value survives a save/load round trip.
 function labelSlideSuite(t) {
+  suite('Hit tolerance scales with zoom, and nearest wins', () => {
+    // Two parallel runs 20 units apart, each carrying one annotation at the
+    // midpoint - a miniature of the six-strand fibre bundle where this was
+    // reported. Free-floating straight connections so the geometry is exact and
+    // no device padding can claim the click.
+    const idoc = document.querySelector('iframe').contentDocument;
+    const run = (id, y) => ({ id, fromDevice: null, toDevice: null,
+      fromPoint: { x: 200, y }, toPoint: { x: 600, y },
+      color: '#333333', thickness: 2, dash: 'solid', routing: 'straight',
+      label: '', labelPosition: 'top', labelVAlign: 'top', fontSize: 14,
+      fontColor: '#333333', lineFormats: [], spans: [], startArrow: 'none',
+      endArrow: 'none',
+      annotations: [{ id: 'ann-' + id, text: id, position: 0.5, fontSize: 14 }] });
+
+    const load = () => t.applyDiagramData({ version: 6, diagramTitle: 'hit', diagramVersion: 1,
+      devices: [], connections: [run('upper', 200), run('lower', 220)],
+      zones: [], textBoxes: [], images: [], groups: [],
+      deviceTemplates: [], imageTable: {}, nextId: 9 });
+
+    // Which annotation did a double-click at (x,y) land on, at this zoom?
+    const hitAt = (x, y, zoom) => {
+      load();
+      t.state.zoom = zoom;
+      t.state.inlineEditing = null;
+      t.handleCanvasDblClick({ x, y });
+      const ie = t.state.inlineEditing;
+      const got = ie && ie.type === 'annotation' ? ie.annotationId : null;
+      t.state.inlineEditing = null;
+      idoc.querySelectorAll('#canvas-container [contenteditable]').forEach(el => el.remove());
+      return got;
+    };
+
+    // --- the tolerance is a SCREEN budget --------------------------------
+    t.state.zoom = 1;
+    eq('hitSlack is the plain budget at 100%', t.hitSlack(30), 30);
+    t.state.zoom = 4;
+    eq('...a quarter of it at 400%', t.hitSlack(30), 7.5);
+    t.state.zoom = 0.5;
+    eq('...and double at 50%, where lines are visually tiny', t.hitSlack(30), 60);
+    t.state.zoom = 1;
+
+    // --- nearest wins, not first-in-array --------------------------------
+    // y=213 is 13 from the upper run and 7 from the lower. Both are inside the
+    // 30-unit tolerance at 100%, so the OLD code returned `upper` purely
+    // because it comes first in the array. This is the assertion that pins it.
+    eq('the NEARER annotation wins when both are in range', hitAt(400, 213, 1), 'ann-lower');
+    eq('...and the same click nearer the other run picks that one',
+      hitAt(400, 207, 1), 'ann-upper');
+
+    // --- zooming in actually makes the target smaller --------------------
+    // 20 units above the upper run: inside the 30-unit tolerance at 100%, well
+    // outside the 7.5-unit tolerance at 400%. Before, zooming IN to be more
+    // precise left the target exactly as wide, which is what made a 400% click
+    // land on a neighbour.
+    eq('a 20-unit miss still counts at 100%', hitAt(400, 180, 1), 'ann-upper');
+    eq('...and correctly misses at 400%', hitAt(400, 180, 4), null);
+    eq('a click ON the annotation still lands at 400%', hitAt(400, 200, 4), 'ann-upper');
+
+    // --- annotations must still outrank their own line -------------------
+    // An annotation sits ON its line, so the line is always the closer of the
+    // two. Pure nearest-wins across both kinds would make editing an existing
+    // annotation impossible - a regression that would look like the feature
+    // simply vanishing.
+    eq('clicking an annotation edits it rather than the line beneath it',
+      hitAt(400, 200, 1), 'ann-upper');
+
+    // Clicking the line AWAY from any annotation still creates a new one.
+    load();
+    t.state.zoom = 1;
+    t.state.inlineEditing = null;
+    const beforeCount = t.state.connections[0].annotations.length;
+    t.handleCanvasDblClick({ x: 250, y: 200 });
+    ok('a double-click on bare line still creates an annotation',
+      t.state.connections[0].annotations.length === beforeCount + 1,
+      t.state.connections[0].annotations.length + ' vs ' + beforeCount);
+    t.state.inlineEditing = null;
+    idoc.querySelectorAll('#canvas-container [contenteditable]').forEach(el => el.remove());
+  });
+
   suite('Clicking the canvas takes the keyboard back', () => {
     // While a properties-panel control holds focus, BOTH the keydown and paste
     // handlers return on `e.target.tagName === 'INPUT'` (etc), so every canvas
