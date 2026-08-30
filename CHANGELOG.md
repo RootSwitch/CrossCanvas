@@ -3,6 +3,31 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Clicking the canvas takes the keyboard back.**
+The properties panel is full of form controls - the AP slider, the label fields,
+the dropdowns - and both the keydown and paste handlers open by returning when
+the event target is one of them. So while any held focus, EVERY canvas shortcut
+was dead: copy, paste, delete, undo. What made that read as a broken app rather
+than as focus being somewhere reasonable is that nothing said so - the object
+stayed drawn as selected and the panel kept showing its properties, so the app
+looked responsive while ignoring the keyboard. Reported from the field exactly
+that way ("Ctrl+V stopped working, only the right-click menu works") after a
+stretch of dragging the AP slider and renaming zones, with a fresh tab working
+fine - the signature of per-tab focus rather than anything about the build. A
+canvas mousedown now blurs whatever is holding the keyboard, so the gesture
+everyone already makes to get back to the diagram actually works, instead of
+depending on the browser's own blur behaviour (which differs by engine, and did
+not reproduce in Chromium at all). The same click also clears a STALE
+inline-edit flag: `state.inlineEditing` makes the keydown handler return
+unconditionally, whatever has focus, so a cleanup path that ever failed to
+clear it left the tab ignoring every shortcut until a reload, with no way back.
+Cleanup removes the editor from the document, so a flag whose element is no
+longer connected is by definition a leftover. Only controls that actually block
+the shortcuts are blurred, and never a LIVE inline editor - that one owns a blur
+handler which commits the edit, so reaching for it here would commit twice.
+Pinned by a suite that plants both mistakes: dropping the call from the
+mousedown handler, and blurring unconditionally.
+
 **Unreleased (post-4.1.0)**: **Add Space moves the whole diagram at once.** A
 diagram that grows by discovery keeps finding sections that belong above or left
 of what is drawn, and the canvas only ever grows right and down - `updateCanvasSize`

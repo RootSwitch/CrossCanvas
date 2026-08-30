@@ -5441,10 +5441,56 @@
     // destroys DOM elements, preventing the browser from firing native dblclick
     let lastMousedownInfo = { time: 0, x: 0, y: 0 };
 
+    // --- clicking the canvas takes the keyboard back ------------------------
+    // The properties panel is full of form controls - the AP slider, the label
+    // fields, the dropdowns - and BOTH the keydown and paste handlers open by
+    // returning when the event target is one. So while any of them holds focus,
+    // every canvas shortcut is dead: Ctrl+C, Ctrl+V, Delete, undo, all of it.
+    //
+    // What makes that nasty rather than merely correct is that NOTHING SAYS SO.
+    // The object is still drawn selected, the panel still shows its properties,
+    // and the app looks perfectly responsive while ignoring the keyboard - so it
+    // reads as a broken app rather than as focus being somewhere reasonable. It
+    // was reported exactly that way: "Ctrl+V stopped working, only the
+    // right-click menu works", after a session of dragging the AP slider and
+    // renaming zones. A new tab was fine, which is the signature of per-tab
+    // focus rather than anything about the build.
+    //
+    // Clicking the canvas is what everyone does to get back to the diagram, so
+    // make that actually hand the keyboard back instead of depending on the
+    // browser's own blur behaviour, which differs between engines and did not
+    // reproduce in Chromium at all.
+    //
+    // Only elements that ACTUALLY block the shortcuts are blurred, and never the
+    // inline editor: that one lives in the canvas container and owns a blur
+    // handler that commits the edit, so the browser's natural blur already does
+    // the right thing and reaching for it here would commit twice.
+    function returnKeyboardToCanvas() {
+        // A stale inline-edit flag is deafness with NO ESCAPE: the keydown
+        // handler returns on `state.inlineEditing` unconditionally, whatever has
+        // focus, so a cleanup path that ever fails to clear it leaves the tab
+        // ignoring every shortcut until it is reloaded. Cleanup removes the
+        // editor element from the document, so a flag whose element is no longer
+        // connected is by definition a leftover - and clearing it here means the
+        // same click that fixes focus also fixes this.
+        if (state.inlineEditing && !state.inlineEditing.element.isConnected) {
+            state.inlineEditing = null;
+        }
+        const a = document.activeElement;
+        if (!a) return;
+        const blocksKeys = a.tagName === 'INPUT' || a.tagName === 'SELECT' ||
+                           a.tagName === 'TEXTAREA' || a.isContentEditable;
+        if (!blocksKeys) return;
+        const editor = state.inlineEditing && state.inlineEditing.element;
+        if (editor && (a === editor || editor.contains(a))) return;   // live editor: leave it alone
+        a.blur();
+    }
+
     canvas.addEventListener('mousedown', (e) => {
         // Only the left button drives selection/drag/marquee; right-click is for
         // the context menu (handled separately) and must not start a marquee.
         if (e.button !== 0) return;
+        returnKeyboardToCanvas();
         // Pan tool: drag to scroll the canvas
         if (state.tool === 'pan') {
             const container = document.getElementById('canvas-container');
@@ -17313,6 +17359,7 @@
             // pipeline (round-trip + theme regression)
             state, serializeDiagram, applyDiagramData, importGliffy,
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,
+            returnKeyboardToCanvas,
             translateWholeDocument, contentMinBounds,
             buildComplexSampleDiagram,
             // live theme constants for assertions

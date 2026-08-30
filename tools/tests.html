@@ -1773,6 +1773,106 @@ function connectIntentSuite(t) {
 // centre (so old boards are untouched), a stored value is HONOURED by the same
 // anchor every consumer calls, and the value survives a save/load round trip.
 function labelSlideSuite(t) {
+  suite('Clicking the canvas takes the keyboard back', () => {
+    // While a properties-panel control holds focus, BOTH the keydown and paste
+    // handlers return on `e.target.tagName === 'INPUT'` (etc), so every canvas
+    // shortcut is silently dead while the object still LOOKS selected. Reported
+    // from the field as "Ctrl+V stopped working, only the right-click menu
+    // works" after a session of dragging the AP slider and renaming zones; a
+    // fresh tab was fine, which is per-tab focus rather than anything built.
+    const idoc = document.querySelector('iframe').contentDocument;
+    const iwin = document.querySelector('iframe').contentWindow;
+    const blocks = (el) => el.tagName === 'INPUT' || el.tagName === 'SELECT' ||
+                           el.tagName === 'TEXTAREA' || el.isContentEditable;
+
+    // --- the reported fault ---------------------------------------------
+    // The AP slider is the control the field report named, so pin that it is
+    // one of the blocking kinds. It cannot be FOCUSED here though: the
+    // properties panel is hidden with nothing selected, and focus() on a hidden
+    // element is a no-op - which silently made the two assertions below pass
+    // against an untouched BODY the first time this was written. The exercise
+    // therefore uses an always-visible input; the mechanism is identical.
+    const slider = idoc.getElementById('device-ap-slider');
+    ok('the AP slider (the reported trigger) is a control that blocks shortcuts',
+      !!slider && blocks(slider), slider ? slider.tagName : 'missing');
+    const field = idoc.getElementById('device-search');
+    field.focus();
+    ok('...and focusing a panel control really does block them',
+      blocks(idoc.activeElement) && idoc.activeElement === field,
+      idoc.activeElement.tagName + '#' + idoc.activeElement.id);
+    t.returnKeyboardToCanvas();
+    ok('a canvas click hands the keyboard back',
+      !blocks(idoc.activeElement), idoc.activeElement.tagName +
+      (idoc.activeElement.id ? '#' + idoc.activeElement.id : ''));
+
+    // Wired to the real handler, not just callable: a fix nobody calls is not
+    // a fix, and this is the only assertion that proves the mousedown path.
+    field.focus();
+    idoc.getElementById('canvas').dispatchEvent(new iwin.MouseEvent('mousedown',
+      { bubbles: true, cancelable: true, button: 0, clientX: 5, clientY: 5 }));
+    ok('...and a real canvas mousedown does it, not just the helper',
+      !blocks(idoc.activeElement), idoc.activeElement.tagName);
+
+    // The EXACT control the user narrowed it to: the Device Properties label
+    // field is a contentEditable, not an input, and Firefox does NOT blur it
+    // when the click lands on the SVG canvas (Chromium does, which is why this
+    // never reproduced here). Clicking into it was enough to kill the keyboard
+    // - no typing required - and clicking the canvas did not bring it back.
+    const panelEditable = idoc.createElement('div');
+    panelEditable.contentEditable = 'true';
+    panelEditable.id = 'test-panel-label';
+    // Attached to a VISIBLE container on purpose. The real field lives in
+    // #properties-host, which is hidden with nothing selected, and focus() on a
+    // hidden element is a silent no-op - it made the assertion below pass
+    // against an untouched BODY when this was first written. Same element kind,
+    // same branch of the blur logic, somewhere it can actually take focus.
+    idoc.getElementById('canvas-container').appendChild(panelEditable);
+    panelEditable.focus();
+    ok('a focused contentEditable (the reported control kind) blocks shortcuts',
+      blocks(idoc.activeElement) && idoc.activeElement === panelEditable,
+      idoc.activeElement.tagName + '#' + idoc.activeElement.id);
+    t.returnKeyboardToCanvas();
+    ok('...and a canvas click blurs it too, not just plain inputs',
+      idoc.activeElement !== panelEditable, idoc.activeElement.tagName);
+    panelEditable.remove();
+
+    // --- the stale flag, which is deafness with no escape ----------------
+    // The keydown handler returns on state.inlineEditing UNCONDITIONALLY, so a
+    // leftover flag ignores every shortcut until the tab is reloaded. Cleanup
+    // removes the editor from the document, so a detached element IS the
+    // leftover signature.
+    const orphan = idoc.createElement('div');
+    t.state.inlineEditing = { type: 'device', id: 'x', element: orphan, labelField: 'label' };
+    ok('a stale inline-edit flag is set up for the test',
+      !!t.state.inlineEditing && !orphan.isConnected);
+    t.returnKeyboardToCanvas();
+    ok('a canvas click clears a stale inline-edit flag',
+      t.state.inlineEditing === null, JSON.stringify(t.state.inlineEditing));
+
+    // --- and must NOT break inline editing, which is the real risk --------
+    // The editor lives in the canvas container and owns a blur handler that
+    // commits the edit, so blurring it here would commit twice and clearing the
+    // flag would strand the node. A live editor must be left completely alone.
+    const live = idoc.createElement('div');
+    live.contentEditable = 'true';
+    live.textContent = 'editing';
+    idoc.getElementById('canvas-container').appendChild(live);
+    live.focus();
+    t.state.inlineEditing = { type: 'device', id: 'x', element: live, labelField: 'label' };
+    t.returnKeyboardToCanvas();
+    ok('a LIVE inline editor keeps its flag', t.state.inlineEditing !== null);
+    ok('...and keeps focus, so the edit is not committed twice',
+      idoc.activeElement === live, idoc.activeElement.tagName);
+    t.state.inlineEditing = null;
+    live.remove();
+
+    // --- and leaves ordinary focus alone ---------------------------------
+    idoc.body.focus();
+    const before = idoc.activeElement;
+    t.returnKeyboardToCanvas();
+    ok('focus that blocks nothing is left untouched', idoc.activeElement === before);
+  });
+
   suite('Add Space (whole-document translation)', () => {
     const AP = (w,h) => [{rx:w/2,ry:0},{rx:w,ry:0},{rx:w,ry:h/2},{rx:w,ry:h},{rx:w/2,ry:h},{rx:0,ry:h},{rx:0,ry:h/2},{rx:0,ry:0}];
     const box = (id,x,y) => ({ id, x, y, w:60, h:60, label:id, labelPosition:'bottom', fontSize:14,
