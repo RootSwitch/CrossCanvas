@@ -3,6 +3,23 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Raster export paints connections above pasted
+images, and zone labels above connections - the order the canvas has always
+drawn them.** A fibre run traced over a floor-plan image exported as the floor
+plan alone in PNG, JPEG and PDF; SVG and draw.io were fine. The rasterizer is
+the one export path that draws by hand, and it had a race: pasted images decode
+asynchronously, and it drew every connection synchronously before waiting for
+them, so each image landed on top of the lines crossing it - no matter the
+layer order, and no matter that the app's own comment says a floor plan MUST be
+crossed. Connections now draw after the images have landed, and zone labels
+after connections, matching the live layer stack (zones, images, connections,
+zone labels, devices). tools/tests.html pins it by pixel: a thick blue line
+across a solid red image must come out blue where they cross. Also worth
+knowing if you hit the snapping that led here: holding Ctrl (or Cmd) when you
+release a connection ends it as a free point instead of snapping to the nearest
+attachment point - image edges included - so the image layer need not be
+locked to draw over it.
+
 **Unreleased (post-4.1.0)**: **Hit tolerance is a screen budget, and the nearest
 thing wins.** Double-click targeting on densely packed connections was erratic,
 and two separate faults were doing it. The tolerances were raw CONTENT units - a

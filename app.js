@@ -15921,7 +15921,7 @@
     // Raster/PDF export ('png' | 'jpeg' | 'pdf'), always cropped to content
     // bounds. (Formerly exportJPEG with a dead un-cropped branch and a dead
     // confirm() fallback - every caller passed explicit arguments.)
-    function exportRaster(format, showGrid, transparent) {
+    function exportRaster(format, showGrid, transparent, opts) {
         // Hidden tiers export as displayed (WYSIWYG); locked tiers are visible
         // and export normally. Devices and text boxes draw in their shared
         // stacking order, matching the canvas.
@@ -16061,17 +16061,19 @@
                 ctx.globalAlpha = 1;
                 ctx.stroke();
             }
-            if (zone.label) {
-                // Match renderZone: the opacity boost only applies to a label
-                // with NO explicit fontColor (it rides the faded fill); a
-                // custom-colored label renders fully opaque, on screen AND here.
-                ctx.globalAlpha = !zone.fontColor ? Math.min(1, zone.opacity + 0.4) : 1;
-                drawObjLabelToCanvas(ctx, zone, zone.borderColor);
-            }
             ctx.restore();
         });
 
-        // Draw pasted images
+        // Pasted images: START the loads here. They are DRAWN inside the
+        // promise chain below, and connections and zone labels are drawn after
+        // them there, in the canvas's own layer order. Drawing connections
+        // synchronously at this point - which is what this function used to do
+        // - painted them BEFORE the images had decoded, so every image landed
+        // on top of every connection in PNG, JPEG and PDF: a fibre run traced
+        // over a floor plan exported as the floor plan alone. The live canvas,
+        // the SVG export and the draw.io export were all correct; only this
+        // rasterizer had the race, because it is the only path that draws by
+        // hand.
         const pastedImagePromises = expImages.map(img => {
             return new Promise((resolve) => {
                 const el = new Image();
@@ -16082,8 +16084,8 @@
             });
         });
 
-        // Draw connections
-        expConns.forEach(conn => {
+        // Draw connections - deferred; see the pasted-images note above.
+        const drawConnections = () => expConns.forEach(conn => {
             const start = resolveConnEndpoint(conn, 'from');
             const end = resolveConnEndpoint(conn, 'to');
             if (!start || !end) return;
@@ -16356,6 +16358,20 @@
             }
         });
 
+        // Zone labels paint ABOVE connections on the live canvas (their own
+        // layer sits between connections and devices, so a label's halo can
+        // cut through a line that runs behind it). They used to be drawn in
+        // the zones pass here, i.e. underneath. Same alpha rule as renderZone:
+        // the opacity boost applies only to a label with NO explicit
+        // fontColor; a custom-colored label renders fully opaque.
+        const drawZoneLabels = () => expZones.forEach(zone => {
+            if (!zone.label) return;
+            ctx.save();
+            ctx.globalAlpha = !zone.fontColor ? Math.min(1, zone.opacity + 0.4) : 1;
+            drawObjLabelToCanvas(ctx, zone, zone.borderColor);
+            ctx.restore();
+        });
+
         // Draw devices (load images then draw)
         const imagePromises = expDevLayer.filter(o => expDevSet.has(o)).map(device => {
             return new Promise((resolve) => {
@@ -16367,12 +16383,16 @@
             });
         });
 
-        Promise.all(pastedImagePromises).then(piResults => {
+        return Promise.all(pastedImagePromises).then(piResults => {
             piResults.forEach(({ img, el }) => {
                 if (!el) return;
                 ctx.drawImage(el, img.x, img.y, img.w, img.h);
                 drawObjLabelToCanvas(ctx, img, '#333');
             });
+            // Now the layer order the live SVG paints: zones, images,
+            // connections, zone labels, then devices and text in the next step.
+            drawConnections();
+            drawZoneLabels();
             return Promise.all(imagePromises);
         }).then(results => {
             const imgByDevice = new Map(results.map(r => [r.device, r.img]));
@@ -16464,6 +16484,11 @@
             };
 
             expDevLayer.forEach(node => expDevSet.has(node) ? drawDeviceNode(node) : drawTextBoxNode(node));
+
+            // Test seam: tools/tests.html samples pixels off the finished
+            // canvas to pin the paint order. offX/offY/scale let it map a
+            // board coordinate to a canvas pixel exactly as this function did.
+            if (opts && opts.returnCanvas) return { canvas: c, offX, offY, scale };
 
             if (format === 'pdf') {
                 exportCanvasToPDF(c, scale);
@@ -17403,6 +17428,7 @@
             resetDocumentState, newDiagram, applyTheme, recolorAllToTheme,
             returnKeyboardToCanvas, hitSlack, handleCanvasDblClick,
             translateWholeDocument, contentMinBounds,
+            exportRaster,
             buildComplexSampleDiagram,
             // live theme constants for assertions
             consts: () => ({ STENCIL_FRAME_BLUE, DEFAULT_CONN_COLOR, DEFAULT_DEVICE_TINT,

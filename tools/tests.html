@@ -334,6 +334,7 @@ async function run(t) {
   labelSlideSuite(t);
   connectIntentSuite(t);
   await clipboardSuite(t);
+  await rasterOrderSuite(t);
   await corpusSuite(t);
   render();
 }
@@ -1313,6 +1314,48 @@ function waypointConvertSuite(t) {
 // Ctrl+C used to suppress the paste EVENT forever, so a fresh screenshot
 // pasted the morning's stale device); neither -> object-clipboard fallback.
 // Everything here goes through the REAL listeners via synthetic events.
+// Raster export paints layers in the canvas's order. A fibre run traced over a
+// floor-plan image exported as the image alone, because pasted images decode
+// asynchronously and the rasterizer drew connections before waiting for them -
+// so every image landed on top. Pixel-sampled off the real export canvas, on
+// a solid red image crossed by a thick blue line: the crossing pixel must be
+// blue. SVG and draw.io exports never had this; only the hand-drawn path did.
+async function rasterOrderSuite(t) {
+  const cv = document.createElement('canvas');
+  cv.width = 16; cv.height = 16;
+  const g = cv.getContext('2d'); g.fillStyle = '#ff0000'; g.fillRect(0, 0, 16, 16);
+  const red = cv.toDataURL('image/png');
+
+  t.applyDiagramData({ version: 6, diagramTitle: 'raster', diagramVersion: 1,
+    devices: [], textBoxes: [], groups: [], deviceTemplates: [], imageTable: {}, nextId: 9,
+    zones: [{ id: 'z1', x: 60, y: 60, w: 300, h: 300, label: 'ZL',
+              fillColor: '#88aaff', borderColor: '#224488', opacity: 0.3 }],
+    images: [{ id: 'im1', x: 100, y: 100, w: 200, h: 200, dataURL: red, label: '', attachmentPoints: [] }],
+    connections: [{ id: 'c1', fromDevice: null, toDevice: null,
+      fromPoint: { x: 50, y: 200 }, toPoint: { x: 350, y: 200 },
+      color: '#0000ff', thickness: 8, dash: 'solid', routing: 'straight',
+      label: '', labelPosition: 'top', labelVAlign: 'top', fontSize: 14, fontColor: '#333333',
+      lineFormats: [], spans: [], startArrow: 'none', endArrow: 'none', annotations: [] }] });
+
+  let out = null, err = null;
+  try { out = await t.exportRaster('png', false, false, { returnCanvas: true }); }
+  catch (e) { err = e; }
+
+  suite('Raster export paints connections above images', () => {
+    ok('the export ran to completion and handed back its canvas', out && out.canvas && !err, err && err.message);
+    if (!out) return;
+    const ctx = out.canvas.getContext('2d');
+    const px = (x, y) => Array.from(ctx.getImageData(
+      Math.round((x - out.offX) * out.scale), Math.round((y - out.offY) * out.scale), 1, 1).data);
+    const onLine = px(200, 200);     // mid-line, well inside the image
+    const onImage = px(150, 130);    // inside the image, clear of the line
+    ok('the image itself was drawn (a red pixel where only the image is)',
+      onImage[0] > 200 && onImage[2] < 100, JSON.stringify(onImage));
+    ok('where the connection crosses the image, the CONNECTION wins',
+      onLine[2] > 200 && onLine[0] < 100, JSON.stringify(onLine));
+  });
+}
+
 async function clipboardSuite(t) {
   const MARKER = 'application/x-crosscanvas-objects';   // pinned: a rename must break this test
   const frame = document.querySelector('iframe');
