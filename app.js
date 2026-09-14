@@ -1410,8 +1410,14 @@
         canvasFillCache = { key, rgb };
         return rgb;
     }
-    function surfaceColorAt(x, y) {
-        let [r, g, b] = canvasBaseRGB();
+    // The rasterizer's ground. Exports paint a white sheet whatever mode the
+    // editor is in (dark mode is a viewing convenience; the file and its
+    // exports are light), so a halo stroked for export samples THIS surface
+    // rather than the screen's - or a dark-mode export would ring every
+    // label in the dark canvas color on a white page.
+    const RASTER_SURFACE_RGB = [255, 255, 255];
+    function surfaceColorAt(x, y, base) {
+        let [r, g, b] = base || canvasBaseRGB();
         state.zones.forEach(z => {
             if (x < z.x || x > z.x + z.w || y < z.y || y > z.y + z.h) return;
             const rgb = parseColorToRGB(z.fill || '#e8f4fd');
@@ -13771,7 +13777,36 @@
     // Draw a node's multi-line label onto the export canvas (devices, zones
     // and images all route through here). Mirrors renderMultiLineLabel,
     // including the explicit labelAlign justification override.
-    function drawObjLabelToCanvas(ctx, obj, fallbackColor) {
+    // The box an image occupies under preserveAspectRatio 'xMidYMid meet':
+    // scaled to fit inside (x, y, w, h) and centered, which is how the SVG
+    // canvas places every device glyph. The ratio comes from the decoded
+    // image's intrinsic size. The bundled stencils declare none (width="100%"
+    // with only a viewBox): Chromium then reports viewBox-derived dimensions,
+    // some Firefox versions report zeros, so the viewBox is read as the
+    // backstop. An image with no ratio at all is stretched by the SVG
+    // <image> too, so it gets the full box.
+    function meetFitBox(img, dataURL, x, y, w, h) {
+        let ratio = (img.naturalWidth > 0 && img.naturalHeight > 0)
+            ? img.naturalWidth / img.naturalHeight : 0;
+        if (!ratio && isSVGDataURL(dataURL)) {
+            try {
+                const svg = atob(dataURL.split(',')[1]);
+                const m = svg.match(/viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/);
+                if (m && +m[1] > 0 && +m[2] > 0) ratio = +m[1] / +m[2];
+            } catch (e) { /* not base64: no viewBox to read, full box below */ }
+        }
+        if (!ratio) return { x, y, w, h };
+        const fh = Math.min(w / ratio, h), fw = fh * ratio;
+        return { x: x + (w - fw) / 2, y: y + (h - fh) / 2, w: fw, h: fh };
+    }
+
+    // kind and faceColor mirror renderMultiLineLabel: the halo scope is per
+    // kind, and an inside label sits on the node's own face rather than the
+    // board. The halo is stroked here exactly as the SVG paints it
+    // (paint-order: stroke, round joins, same width rule). This used to draw
+    // bare glyphs, so a label the halo kept legible on screen lost that in
+    // the PNG. obj.fillOpacity fades the FILL only, like the SVG attribute.
+    function drawObjLabelToCanvas(ctx, obj, fallbackColor, kind, faceColor) {
         if (!obj.label) return;
         const fillColor = obj.fontColor || fallbackColor || '#333';
         const fs = obj.fontSize || 20;
@@ -13779,6 +13814,11 @@
         const lineH = fs * 1.3;
         const lpos = obj.labelPosition || 'bottom';
         const pos = canvasLabelPos(lpos, obj.x, obj.y, obj.w, obj.h, fs);
+        const inside = lpos === 'center' || lpos === 'top-inside' || lpos === 'bottom-inside';
+        const halo = !haloEnabledFor(kind) ? null : (inside && faceColor) ? faceColor
+            : surfaceColorAt(pos.x, pos.y, RASTER_SURFACE_RGB);
+        const haloW = Math.min(5, Math.max(2.5, fs * 0.18));
+        const fillAlpha = obj.fillOpacity != null ? obj.fillOpacity : 1;
         const vertOff = -getVAlignOffset(effectiveVAlign(lpos, obj.labelVAlign), spans.length, lineH);
         const family = ctxFamilyOf(obj);
         const explicit = obj.labelAlign && obj.labelAlign !== 'auto' && spans.length > 1 ? obj.labelAlign : null;
@@ -13805,8 +13845,16 @@
             lineSpans.forEach(span => {
                 ctx.font = fontFor(span);
                 ctx.textAlign = 'left';
+                if (halo) {
+                    ctx.strokeStyle = halo;
+                    ctx.lineWidth = haloW;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(span.text, startX, y);
+                }
                 ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : fillColor;
+                ctx.globalAlpha = fillAlpha;
                 ctx.fillText(span.text, startX, y);
+                ctx.globalAlpha = 1;
                 startX += ctx.measureText(span.text).width;
             });
         });
@@ -16232,7 +16280,7 @@
                 // Halo style strokes the surface color behind the glyphs -
                 // for a label sitting ON its own line, the halo is what keeps
                 // it readable, so the raster export must carry it.
-                const cHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(mx, my) : null;
+                const cHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(mx, my, RASTER_SURFACE_RGB) : null;
                 const cHaloW = Math.min(5, Math.max(2.5, cfs * 0.18));
 
                 const connFillColor = conn.fontColor || conn.color;
@@ -16319,7 +16367,7 @@
                         }
                         ctx.globalAlpha = 1;
                     }
-                    const aHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(annPos.x, annPos.y) : null;
+                    const aHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(annPos.x, annPos.y, RASTER_SURFACE_RGB) : null;
                     const aHaloW = Math.min(5, Math.max(2.5, annFs * 0.18));
 
                     const annExplicit = ann.align && ann.align !== 'center' && annSpans.length > 1 ? ann.align : null;
@@ -16361,15 +16409,14 @@
         // Zone labels paint ABOVE connections on the live canvas (their own
         // layer sits between connections and devices, so a label's halo can
         // cut through a line that runs behind it). They used to be drawn in
-        // the zones pass here, i.e. underneath. Same alpha rule as renderZone:
+        // the zones pass here, i.e. underneath. Same object renderZone builds:
         // the opacity boost applies only to a label with NO explicit
-        // fontColor; a custom-colored label renders fully opaque.
+        // fontColor, and it fades the glyph fill alone - never the halo.
         const drawZoneLabels = () => expZones.forEach(zone => {
             if (!zone.label) return;
-            ctx.save();
-            ctx.globalAlpha = !zone.fontColor ? Math.min(1, zone.opacity + 0.4) : 1;
-            drawObjLabelToCanvas(ctx, zone, zone.borderColor);
-            ctx.restore();
+            drawObjLabelToCanvas(ctx, Object.assign({}, zone, {
+                fillOpacity: !zone.fontColor ? Math.min(1, zone.opacity + 0.4) : undefined
+            }), zone.borderColor, 'zone');
         });
 
         // Draw devices (load images then draw)
@@ -16387,7 +16434,7 @@
             piResults.forEach(({ img, el }) => {
                 if (!el) return;
                 ctx.drawImage(el, img.x, img.y, img.w, img.h);
-                drawObjLabelToCanvas(ctx, img, '#333');
+                drawObjLabelToCanvas(ctx, img, '#333', 'image');
             });
             // Now the layer order the live SVG paints: zones, images,
             // connections, zone labels, then devices and text in the next step.
@@ -16411,10 +16458,17 @@
                 ctx.stroke();
 
                 if (img) {
-                    ctx.drawImage(img, device.x, device.y, device.w, device.h);
+                    // The canvas places the glyph with 'xMidYMid meet': fitted
+                    // inside the device box and centered, so a device resized
+                    // to a rectangle (an imported tower server, a Gliffy rack
+                    // switch) keeps its square icon on a rectangular frame.
+                    // drawImage into the full box stretched the glyph to the
+                    // frame's ratio - only in this export.
+                    const fit = meetFitBox(img, device.image, device.x, device.y, device.w, device.h);
+                    ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
                 }
 
-                drawObjLabelToCanvas(ctx, device, '#333');
+                drawObjLabelToCanvas(ctx, device, '#333', 'device', device.iconBg || 'rgb(255,254,254)');
             };
 
             const drawTextBoxNode = (tb) => {
@@ -16439,6 +16493,28 @@
                 });
                 const padX = 8;
                 const boxW = maxW + padX * 2;
+                // Same halo the canvas gives text boxes (see renderTextBox),
+                // sampled at the box center on the export's own ground.
+                const tbHalo = haloEnabledFor('text')
+                    ? surfaceColorAt(tb.x + boxW / 2, tb.y + (tbSpans.length * lineH + 8) / 2, RASTER_SURFACE_RGB)
+                    : null;
+                const tbHaloW = Math.min(5, Math.max(2.5, fs * 0.18));
+                const paintSpan = (span, x, y) => {
+                    let fStr = `${fs}px ${tFamily}`;
+                    if (span.italic) fStr = 'italic ' + fStr;
+                    if (span.bold) fStr = 'bold ' + fStr;
+                    ctx.font = fStr;
+                    ctx.textAlign = 'left';
+                    if (tbHalo) {
+                        ctx.strokeStyle = tbHalo;
+                        ctx.lineWidth = tbHaloW;
+                        ctx.lineJoin = 'round';
+                        ctx.strokeText(span.text, x, y);
+                    }
+                    ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : (tb.fontColor || '#333333');
+                    ctx.fillText(span.text, x, y);
+                    return ctx.measureText(span.text).width;
+                };
 
                 tbSpans.forEach((lineSpans, i) => {
                     const y = tb.y + 4 + fs + i * lineH;
@@ -16457,28 +16533,10 @@
                             totalW += ctx.measureText(span.text).width;
                         });
                         let startX = align === 'center' ? baseX - totalW / 2 : baseX - totalW;
-                        lineSpans.forEach(span => {
-                            let fStr = `${fs}px ${tFamily}`;
-                            if (span.italic) fStr = 'italic ' + fStr;
-                            if (span.bold) fStr = 'bold ' + fStr;
-                            ctx.font = fStr;
-                            ctx.textAlign = 'left';
-                            ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : (tb.fontColor || '#333333');
-                            ctx.fillText(span.text, startX, y);
-                            startX += ctx.measureText(span.text).width;
-                        });
+                        lineSpans.forEach(span => { startX += paintSpan(span, startX, y); });
                     } else {
                         let currentX = baseX;
-                        lineSpans.forEach(span => {
-                            let fStr = `${fs}px ${tFamily}`;
-                            if (span.italic) fStr = 'italic ' + fStr;
-                            if (span.bold) fStr = 'bold ' + fStr;
-                            ctx.font = fStr;
-                            ctx.textAlign = 'left';
-                            ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : (tb.fontColor || '#333333');
-                            ctx.fillText(span.text, currentX, y);
-                            currentX += ctx.measureText(span.text).width;
-                        });
+                        lineSpans.forEach(span => { currentX += paintSpan(span, currentX, y); });
                     }
                 });
             };

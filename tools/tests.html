@@ -335,6 +335,7 @@ async function run(t) {
   connectIntentSuite(t);
   await clipboardSuite(t);
   await rasterOrderSuite(t);
+  await rasterFidelitySuite(t);
   await corpusSuite(t);
   render();
 }
@@ -1353,6 +1354,129 @@ async function rasterOrderSuite(t) {
       onImage[0] > 200 && onImage[2] < 100, JSON.stringify(onImage));
     ok('where the connection crosses the image, the CONNECTION wins',
       onLine[2] > 200 && onLine[0] < 100, JSON.stringify(onLine));
+  });
+}
+
+// --- raster fidelity: icon aspect + label halos ----------------------------
+// Two more places the hand-drawn rasterizer had drifted from the SVG canvas.
+// The device glyph was drawImage'd into the FULL device box, so a device
+// resized to a rectangle (an imported tower server, a Gliffy rack switch)
+// exported with its square icon stretched to the frame's ratio, where the
+// canvas letterboxes it with xMidYMid meet. And device, text-box and zone
+// labels were painted as bare glyphs, while the canvas strokes a halo in the
+// surface color behind them - so a label a halo kept legible on screen lost
+// that in the PNG.
+async function rasterFidelitySuite(t) {
+  const cv = document.createElement('canvas');
+  cv.width = 16; cv.height = 16;
+  const g = cv.getContext('2d'); g.fillStyle = '#ff0000'; g.fillRect(0, 0, 16, 16);
+  const red = cv.toDataURL('image/png');
+  // The bundled stencil header: percentage size, square viewBox. Chromium
+  // reports its intrinsic size from the viewBox; some Firefox report none.
+  const redSVG = 'data:image/svg+xml;base64,' + btoa(
+    '<svg width="100%" height="100%" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect width="300" height="300" fill="#ff0000"/></svg>');
+  const AP = (w, h) => [{ rx: w/2, ry: 0 }, { rx: w, ry: 0 }, { rx: w, ry: h/2 }, { rx: w, ry: h },
+                        { rx: w/2, ry: h }, { rx: 0, ry: h }, { rx: 0, ry: h/2 }, { rx: 0, ry: 0 }];
+  const TEN_I = 'IIIIIIIIII';
+  const dev = (id, x, y, w, h, image, label) => ({
+    id, templateId: id + 't', image, originalImage: image, x, y, w, h,
+    label, labelPosition: 'bottom', fontSize: 40, fontColor: '#333333',
+    lineFormats: [{ bold: false, italic: false }],
+    spans: [[{ text: label, bold: false, italic: false }]], tintColor: null,
+    attachmentPoints: AP(w, h), fields: {}
+  });
+  const line = (id, y, color) => ({ id, fromDevice: null, toDevice: null,
+    fromPoint: { x: 50, y }, toPoint: { x: 650, y },
+    color, thickness: 8, dash: 'solid', routing: 'straight',
+    label: '', labelPosition: 'top', labelVAlign: 'top', fontSize: 14, fontColor: '#333333',
+    lineFormats: [], spans: [], startArrow: 'none', endArrow: 'none', annotations: [] });
+  const doc = (extra) => Object.assign({ version: 6, diagramTitle: 'raster2', diagramVersion: 1,
+    devices: [], textBoxes: [], groups: [], deviceTemplates: [], imageTable: {}, nextId: 9,
+    zones: [], images: [], connections: [] }, extra);
+
+  // Export with strokeText spied: every halo is one strokeText, recorded by
+  // its color, so the suite can also say WHICH surface a halo sampled.
+  const proto = document.querySelector('iframe').contentWindow.CanvasRenderingContext2D.prototype;
+  const run = async (d) => {
+    t.applyDiagramData(d);
+    const strokes = [];
+    const orig = proto.strokeText;
+    proto.strokeText = function () { strokes.push(String(this.strokeStyle)); return orig.apply(this, arguments); };
+    let out = null, err = null;
+    try { out = await t.exportRaster('png', false, false, { returnCanvas: true }); }
+    catch (e) { err = e; }
+    finally { proto.strokeText = orig; }
+    if (!out) return { err, strokes };
+    const ctx = out.canvas.getContext('2d');
+    const px = (x, y) => Array.from(ctx.getImageData(
+      Math.round((x - out.offX) * out.scale), Math.round((y - out.offY) * out.scale), 1, 1).data);
+    // Near-white pixels inside a board-coordinate rectangle.
+    const whites = (x0, y0, x1, y1) => {
+      const X = Math.round((x0 - out.offX) * out.scale), Y = Math.round((y0 - out.offY) * out.scale);
+      const W = Math.round((x1 - x0) * out.scale), H = Math.round((y1 - y0) * out.scale);
+      const d = ctx.getImageData(X, Y, W, H).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 245 && d[i + 1] > 245 && d[i + 2] > 245) n++;
+      return n;
+    };
+    return { out, err, strokes, px, whites };
+  };
+
+  // 1. Aspect. A square glyph on a 120x40 device and on a 40x120 device: the
+  //    glyph must sit centered at 40x40, leaving the face color showing near
+  //    the frame's long edges. Stretched, those pixels come out red.
+  const A = await run(doc({ devices: [
+    dev('wide', 100, 100, 120, 40, red, ''),
+    dev('tall', 300, 100, 40, 120, red, ''),
+    dev('wsvg', 100, 300, 120, 40, redSVG, '') ] }));
+  suite('Raster export keeps the icon aspect (xMidYMid meet)', () => {
+    ok('the export ran to completion', A.out && !A.err, A.err && A.err.message);
+    if (!A.out) return;
+    const isRed = p => p[0] > 200 && p[1] < 80 && p[2] < 80;
+    const isFace = p => p[0] > 240 && p[1] > 240 && p[2] > 240;
+    ok('wide device: the glyph is centered (red at the middle)', isRed(A.px(160, 120)), JSON.stringify(A.px(160, 120)));
+    ok('wide device: the glyph is NOT stretched over the frame (face color near the left edge)',
+      isFace(A.px(110, 120)), JSON.stringify(A.px(110, 120)));
+    ok('tall device: the glyph is centered', isRed(A.px(320, 160)), JSON.stringify(A.px(320, 160)));
+    ok('tall device: face color near the top edge', isFace(A.px(320, 110)), JSON.stringify(A.px(320, 110)));
+    ok('a bundled-style SVG (width=100%, square viewBox) is letterboxed too',
+      isRed(A.px(160, 320)) && isFace(A.px(110, 320)), JSON.stringify([A.px(160, 320), A.px(110, 320)]));
+  });
+
+  // 2. Halos. A black line runs behind a 40px text box, a 40px device label
+  //    and a zone title. On screen each label wears a halo in its surface
+  //    color - white here, the zone's own fill for the title - which cuts the
+  //    line around every glyph. The pixel proof: with halos on there ARE pure
+  //    white pixels on the line's rows inside the text; with halos off there
+  //    are none (only the black line and #333 glyphs).
+  const tb = { id: 'tb1', x: 100, y: 171, text: TEN_I, fontSize: 40, fontColor: '#333333', textAlign: 'left',
+               spans: [[{ text: TEN_I, bold: false, italic: false }]], lineFormats: [{ bold: false, italic: false }] };
+  const zone = { id: 'z1', x: 60, y: 300, w: 300, h: 200, label: 'ZL', labelPosition: 'center',
+                 fill: '#88aaff', borderColor: '#224488', opacity: 1 };
+  const haloDoc = (scope) => doc(Object.assign({
+    textBoxes: [tb], zones: [zone],
+    devices: [dev('d1', 400, 100, 60, 60, red, TEN_I)],
+    connections: [line('c1', 200, '#000000')] }, scope === undefined ? {} : { labelHalos: scope }));
+  const textW = t.measureSpansWidth(tb.spans, 40, t.fontStackOf(tb));
+  const tbRegion = r => r.whites(108, 197, 108 + textW * 0.8, 204);                  // glyphs span y 186..215
+  const devRegion = r => r.whites(430 - textW * 0.4, 197, 430 + textW * 0.4, 202);  // glyphs span y 175..203
+  const OFF = await run(haloDoc('off'));
+  const DEV = await run(haloDoc('devices'));
+  const ALL = await run(haloDoc(undefined));   // last, so the board is back on the default scope
+  suite('Raster export carries the label halos', () => {
+    ok('all three exports ran', ALL.out && DEV.out && OFF.out,
+      [ALL.err, DEV.err, OFF.err].map(e => e && e.message).join('; '));
+    if (!(ALL.out && DEV.out && OFF.out)) return;
+    ok('halos on: the text box halo cuts the line (white pixels inside the text)', tbRegion(ALL) > 0);
+    ok('halos on: the device label halo cuts the line', devRegion(ALL) > 0);
+    ok('halos on: the zone title is haloed in the ZONE FILL it sits on',
+      ALL.strokes.includes('#88aaff'), JSON.stringify(ALL.strokes));
+    ok('devices scope: the text box still gets its halo', tbRegion(DEV) > 0);
+    ok('devices scope: the zone title stays bare', !DEV.strokes.includes('#88aaff'), JSON.stringify(DEV.strokes));
+    ok('halos off: nothing is stroked', OFF.strokes.length === 0, JSON.stringify(OFF.strokes));
+    ok('halos off: no white pixel inside the text box glyphs', tbRegion(OFF) === 0, tbRegion(OFF) + ' white');
+    ok('halos off: no white pixel inside the device label glyphs', devRegion(OFF) === 0, devRegion(OFF) + ' white');
   });
 }
 

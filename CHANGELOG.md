@@ -3,6 +3,24 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Raster export keeps each icon's aspect and carries
+the label halos.** Two more places the hand-drawn PNG/JPEG/PDF rasterizer had
+drifted from the canvas. A device resized to a rectangle - an imported tower
+server, a Gliffy rack switch - exported with its square icon stretched to the
+frame's ratio, where the canvas fits the icon inside the box and centers it
+(xMidYMid meet); the export now fits it the same way, reading the ratio from
+the image's intrinsic size and falling back to the SVG viewBox for stencils
+that declare none. And device, text box and zone labels exported as bare
+glyphs, while the canvas strokes a halo in the surface color behind every
+label - so a label the halo kept legible over a connection on screen lost that
+in the file. The rasterizer now strokes the same halo (same width rule, same
+per-kind scope, the device face for inside labels, the zone's own fill for its
+title), sampled on the export's white sheet rather than the screen, so a
+dark-mode export does not ring its labels in the dark canvas color.
+tools/tests.html pins both by pixel: a square glyph on a 120x40 device must
+leave the face color showing near the long edges, and a text box over a black
+line must cut it white with halos on and not at all with halos off.
+
 **Unreleased (post-4.1.0)**: **Raster export paints connections above pasted
 images, and zone labels above connections - the order the canvas has always
 drawn them.** A fibre run traced over a floor-plan image exported as the floor
