@@ -13774,9 +13774,6 @@
         return maxW;
     }
 
-    // Draw a node's multi-line label onto the export canvas (devices, zones
-    // and images all route through here). Mirrors renderMultiLineLabel,
-    // including the explicit labelAlign justification override.
     // The box an image occupies under preserveAspectRatio 'xMidYMid meet':
     // scaled to fit inside (x, y, w, h) and centered, which is how the SVG
     // canvas places every device glyph. The ratio comes from the decoded
@@ -13800,6 +13797,9 @@
         return { x: x + (w - fw) / 2, y: y + (h - fh) / 2, w: fw, h: fh };
     }
 
+    // Draw a node's multi-line label onto the export canvas (devices, zones
+    // and images all route through here). Mirrors renderMultiLineLabel,
+    // including the explicit labelAlign justification override.
     // kind and faceColor mirror renderMultiLineLabel: the halo scope is per
     // kind, and an inside label sits on the node's own face rather than the
     // board. The halo is stroked here exactly as the SVG paints it
