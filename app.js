@@ -2540,6 +2540,48 @@
         return d + ` L ${to.x} ${to.y}`;
     }
 
+    // The one geometry behind every rounded-route renderer - the SVG path in
+    // buildPathString and the canvas rasterizer in exportRaster. Consecutive
+    // points within half a pixel collapse to one (a Gliffy import's doubled
+    // waypoints, a bend that folds a segment to nothing), a corner with a
+    // degenerate leg or a collinear turn is passed straight through, and
+    // every other corner is filleted at min(10, half of either leg).
+    // Returns { pts, corners }: corners[i] is null for a straight pass through
+    // pts[i], or { start, ctrl, end } for the fillet at it.
+    //
+    // The rasterizer used to redo this arithmetic on the RAW points: a
+    // doubled corner point gave it a zero-length leg, dividing by that length
+    // made NaN, the canvas dropped the curve call, and the corner came out
+    // sharp in PNG while the screen drew it rounded.
+    function roundedRoute(points) {
+        const pts = [points[0]];
+        for (let i = 1; i < points.length; i++) {
+            const prev = pts[pts.length - 1];
+            if (Math.abs(points[i].x - prev.x) > 0.5 || Math.abs(points[i].y - prev.y) > 0.5) {
+                pts.push(points[i]);
+            }
+        }
+        if (pts.length < 2) pts.push(points[points.length - 1]);
+        const radius = 10;
+        const corners = pts.map(() => null);
+        for (let i = 1; i < pts.length - 1; i++) {
+            const prev = pts[i - 1], curr = pts[i], next = pts[i + 1];
+            const d1x = curr.x - prev.x, d1y = curr.y - prev.y;
+            const d2x = next.x - curr.x, d2y = next.y - curr.y;
+            const len1 = Math.sqrt(d1x * d1x + d1y * d1y);
+            const len2 = Math.sqrt(d2x * d2x + d2y * d2y);
+            if (len1 < 0.5 || len2 < 0.5) continue;
+            if (Math.abs(d1x * d2y - d1y * d2x) < 0.1) continue;   // collinear
+            const r = Math.min(radius, len1 / 2, len2 / 2);
+            corners[i] = {
+                start: { x: curr.x - (d1x / len1) * r, y: curr.y - (d1y / len1) * r },
+                ctrl: curr,
+                end: { x: curr.x + (d2x / len2) * r, y: curr.y + (d2y / len2) * r }
+            };
+        }
+        return { pts, corners };
+    }
+
     function buildPathString(points, routing, hops) {
         if (points.length < 2) return '';
         const hopR = 5;
@@ -2551,61 +2593,28 @@
         }
 
         if (routing === 'rounded') {
-            const cleaned = [points[0]];
-            for (let i = 1; i < points.length; i++) {
-                const prev = cleaned[cleaned.length - 1];
-                if (Math.abs(points[i].x - prev.x) > 0.5 || Math.abs(points[i].y - prev.y) > 0.5) {
-                    cleaned.push(points[i]);
-                }
-            }
-            if (cleaned.length < 2) cleaned.push(points[points.length - 1]);
-
+            const { pts: cleaned, corners } = roundedRoute(points);
             let d = `M ${cleaned[0].x} ${cleaned[0].y}`;
-            const radius = 10;
             // Where the pen actually is: cleaned[0], then each corner arc's
             // exit. The straight run to the next corner starts here, which is
             // what lets hop arcs share a segment with rounded elbows - the
             // margin in segWithHops keeps them from ever touching.
             let pen = cleaned[0];
             for (let i = 1; i < cleaned.length - 1; i++) {
-                const prev = cleaned[i - 1];
-                const curr = cleaned[i];
-                const next = cleaned[i + 1];
-
-                const d1x = curr.x - prev.x;
-                const d1y = curr.y - prev.y;
-                const d2x = next.x - curr.x;
-                const d2y = next.y - curr.y;
-
-                const len1 = Math.sqrt(d1x * d1x + d1y * d1y);
-                const len2 = Math.sqrt(d2x * d2x + d2y * d2y);
-
-                if (len1 < 0.5 || len2 < 0.5) {
-                    d += hops ? segWithHops(pen, curr, hops, hopR, hopR + 2) : ` L ${curr.x} ${curr.y}`;
-                    pen = curr;
+                const c = corners[i];
+                if (!c) {
+                    // A straight pass (degenerate leg, collinear midpoint)
+                    // still splits one run in two - each half carries its own
+                    // hops or crossings there vanish.
+                    d += hops ? segWithHops(pen, cleaned[i], hops, hopR, hopR + 2)
+                              : ` L ${cleaned[i].x} ${cleaned[i].y}`;
+                    pen = cleaned[i];
                     continue;
                 }
-
-                const cross = d1x * d2y - d1y * d2x;
-                if (Math.abs(cross) < 0.1) {
-                    // A collinear midpoint splits one straight run in two -
-                    // each half carries its own hops or crossings there vanish.
-                    d += hops ? segWithHops(pen, curr, hops, hopR, hopR + 2) : ` L ${curr.x} ${curr.y}`;
-                    pen = curr;
-                    continue;
-                }
-
-                const r = Math.min(radius, len1 / 2, len2 / 2);
-
-                const startX = curr.x - (d1x / len1) * r;
-                const startY = curr.y - (d1y / len1) * r;
-                const endX = curr.x + (d2x / len2) * r;
-                const endY = curr.y + (d2y / len2) * r;
-
-                d += hops ? segWithHops(pen, { x: startX, y: startY }, hops, hopR, hopR + 2)
-                          : ` L ${startX} ${startY}`;
-                d += ` Q ${curr.x} ${curr.y} ${endX} ${endY}`;
-                pen = { x: endX, y: endY };
+                d += hops ? segWithHops(pen, c.start, hops, hopR, hopR + 2)
+                          : ` L ${c.start.x} ${c.start.y}`;
+                d += ` Q ${c.ctrl.x} ${c.ctrl.y} ${c.end.x} ${c.end.y}`;
+                pen = c.end;
             }
             d += hops ? segWithHops(pen, cleaned[cleaned.length - 1], hops, hopR, hopR + 2)
                       : ` L ${cleaned[cleaned.length - 1].x} ${cleaned[cleaned.length - 1].y}`;
@@ -16162,20 +16171,20 @@
             ctx.setLineDash(dash === 'none' ? [] : dash.split(' ').map(Number));
 
             if (conn.routing === 'rounded' && points.length > 2) {
+                // The same corners the SVG path gets (roundedRoute). The raw
+                // points can carry coincident corner points, and filleting
+                // those here is what exported one bend per Gliffy connection
+                // sharp.
+                const { pts, corners } = roundedRoute(points);
                 ctx.beginPath();
-                ctx.moveTo(points[0].x, points[0].y);
-                const radius = 10;
-                for (let i = 1; i < points.length - 1; i++) {
-                    const prev = points[i - 1], curr = points[i], next = points[i + 1];
-                    const d1x = curr.x - prev.x, d1y = curr.y - prev.y;
-                    const d2x = next.x - curr.x, d2y = next.y - curr.y;
-                    const len1 = Math.sqrt(d1x * d1x + d1y * d1y);
-                    const len2 = Math.sqrt(d2x * d2x + d2y * d2y);
-                    const r = Math.min(radius, len1 / 2, len2 / 2);
-                    ctx.lineTo(curr.x - (d1x / len1) * r, curr.y - (d1y / len1) * r);
-                    ctx.quadraticCurveTo(curr.x, curr.y, curr.x + (d2x / len2) * r, curr.y + (d2y / len2) * r);
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length - 1; i++) {
+                    const c = corners[i];
+                    if (!c) { ctx.lineTo(pts[i].x, pts[i].y); continue; }
+                    ctx.lineTo(c.start.x, c.start.y);
+                    ctx.quadraticCurveTo(c.ctrl.x, c.ctrl.y, c.end.x, c.end.y);
                 }
-                ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+                ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
                 ctx.stroke();
             } else {
                 ctx.beginPath();
@@ -17470,7 +17479,7 @@
             // (render, export, hit-testing, annotations), plus the endpoint
             // resolution in front of it, so a test can compute a connection's
             // polyline exactly as the renderer does.
-            connRoutePoints, resolveConnEndpoint, routeOrthogonal, getAbsoluteAP, findNode,
+            connRoutePoints, resolveConnEndpoint, roundedRoute, routeOrthogonal, getAbsoluteAP, findNode,
             refitBendsToPath, setNodeAPCount, feasibleAPMax, floatingAPIndex,
             adoptAvoidedSkeleton, classicOrthogonal, convertWaypointsToBends,
             // label placement along that polyline (conn.labelT)

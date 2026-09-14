@@ -3,6 +3,18 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Rounded connections export with every corner
+rounded.** On boards imported from Gliffy, one bend per rounded connection came
+out sharp in PNG, JPEG and PDF while the canvas drew it rounded. The importer
+keeps Gliffy's doubled waypoints verbatim, and a manual bend can fold a segment
+to nothing the same way, so a route can carry two or three coincident points at
+a corner. The SVG path builder has always dropped those before filleting; the
+rasterizer filleted the raw points, divided by a zero-length leg, and the
+canvas silently dropped the resulting NaN curve. Both renderers now draw from
+one corner geometry (roundedRoute), so they cannot disagree again, and
+tools/tests.html pins it: a rounded connection with a doubled corner waypoint
+must leave the corner pixel clear.
+
 **Unreleased (post-4.1.0)**: **Raster export keeps each icon's aspect and carries
 the label halos.** Two more places the hand-drawn PNG/JPEG/PDF rasterizer had
 drifted from the canvas. A device resized to a rectangle - an imported tower

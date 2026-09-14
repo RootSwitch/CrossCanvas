@@ -1478,6 +1478,38 @@ async function rasterFidelitySuite(t) {
     ok('halos off: no white pixel inside the text box glyphs', tbRegion(OFF) === 0, tbRegion(OFF) + ' white');
     ok('halos off: no white pixel inside the device label glyphs', devRegion(OFF) === 0, devRegion(OFF) + ' white');
   });
+
+  // 3. Rounded corners survive coincident route points. A Gliffy import's
+  //    doubled waypoints (and a bend that folds a segment to nothing) put
+  //    two or three identical points at one corner. The canvas path builder
+  //    drops them before filleting; the rasterizer filleted the raw points,
+  //    divided by a zero-length leg, and the canvas silently dropped the NaN
+  //    curve - that corner exported sharp. Thin line, so the corner pixel
+  //    itself tells: clear when filleted (the curve passes 3.5px inside),
+  //    inked when sharp.
+  const R = await run(doc({ connections: [Object.assign(line('r1', 100, '#000000'), {
+    fromPoint: { x: 100, y: 100 }, toPoint: { x: 200, y: 200 }, routing: 'rounded', thickness: 2,
+    waypoints: [{ x: 200, y: 100 }, { x: 200, y: 100 }] })] }));
+  suite('Raster export fillets a corner with coincident route points', () => {
+    const pts = routeOf(t, t.state.connections[0]);
+    const zero = pts.slice(1).filter((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y) < 0.5).length;
+    ok('precondition: the route carries a zero-length segment at the corner', zero >= 1, JSON.stringify(pts));
+    const rr = t.roundedRoute([{ x: 100, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 200 }]);
+    ok('roundedRoute collapses the coincident points to one corner', rr.pts.length === 3 && !!rr.corners[1], JSON.stringify(rr));
+    ok('the fillet starts 10 before the corner and ends 10 after it',
+      !!rr.corners[1] && rr.corners[1].start.x === 190 && rr.corners[1].start.y === 100 &&
+      rr.corners[1].end.x === 200 && rr.corners[1].end.y === 110, JSON.stringify(rr.corners[1]));
+    const col = t.roundedRoute([{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+    ok('a collinear midpoint passes straight through; the real corner is filleted',
+      col.corners[1] === null && !!col.corners[2], JSON.stringify(col.corners));
+    ok('the export ran', R.out && !R.err, R.err && R.err.message);
+    if (!R.out) return;
+    ok('both legs are inked', R.px(150, 100)[0] < 100 && R.px(200, 150)[0] < 100,
+      JSON.stringify([R.px(150, 100), R.px(200, 150)]));
+    ok('the fillet is inked where the curve passes (197.5, 102.5)', R.px(197, 102)[0] < 160, JSON.stringify(R.px(197, 102)));
+    ok('the corner pixel itself is CLEAR - filleted, not sharp',
+      R.px(200, 100)[0] > 240 && R.px(200, 100)[1] > 240, JSON.stringify(R.px(200, 100)));
+  });
 }
 
 async function clipboardSuite(t) {
