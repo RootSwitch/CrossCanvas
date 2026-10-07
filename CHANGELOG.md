@@ -3,6 +3,26 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Connection labels and annotations sit above every
+line.** Connection text used to be drawn inside its own connection's group, so
+every connection saved after it painted over it - pill, halo and all. Where
+several lines crowd into one side of a device, a multi-line annotation was
+struck through by its neighbours, no halo could help (a halo only cuts what is
+painted beneath it), and Bring to Front did nothing (it does not arrange
+connections). Worse, editing a connection redrew it on top of the rest until
+the next click redrew everything in saved order, so the same note was clear one
+moment and covered the next. All connection text now lives in its own layer
+above every line and zone title (below devices), so a pill or halo cuts any
+line crossing it; a redrawn connection keeps its place in the stack; and the
+PNG/JPEG/PDF export paints every line before any connection text, in the same
+order. Hiding or locking Connections in the Layers menu now hides or locks
+their text, and the same fix reaches zone titles, which used to stay on the
+board when Zones were hidden. PingCanvas's kiosk scripts were updated in step
+(SNMP-coded annotations find their line through the new layer), so update both
+together. tools/tests.html pins it: what is on top where a later line crosses a
+note, redraws keeping their place, label and annotation presses still selecting
+their connection, tier hide and lock, and the export's paint order.
+
 **Unreleased (post-4.1.0)**: **Annotations center on their line, and Gliffy
 stencils keep their colors.** A multi-line annotation used to hang from its
 connection: the first line sat on the line and every further line stacked below,

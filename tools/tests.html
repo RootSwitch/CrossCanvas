@@ -338,6 +338,7 @@ async function run(t) {
   await rasterFidelitySuite(t);
   gliffyStencilColorSuite(t);
   await annotationCenterSuite(t);
+  await connTextLayerSuite(t);
   await corpusSuite(t);
   render();
 }
@@ -837,10 +838,11 @@ function labelHaloSuite(t) {
     const styleSel = idoc.getElementById('conn-label-style');
     const iwin = document.querySelector('iframe').contentWindow;
     const setStyle = v => { styleSel.value = v; styleSel.dispatchEvent(new iwin.Event('change', { bubbles: true })); };
-    const lblBg = () => idoc.querySelector('#cc1 .connection-label-bg');
-    const annBg = () => idoc.querySelector('#cc1 .connection-annotation-bg');
-    const lblText = () => idoc.querySelector('#cc1 text.connection-label');
-    const annText = () => idoc.querySelector('#cc1 text.connection-annotation');
+    // Connection text lives in its TEXT group, cl-<connId> in conn-labels-layer.
+    const lblBg = () => idoc.querySelector('#cl-cc1 .connection-label-bg');
+    const annBg = () => idoc.querySelector('#cl-cc1 .connection-annotation-bg');
+    const lblText = () => idoc.querySelector('#cl-cc1 text.connection-label');
+    const annText = () => idoc.querySelector('#cl-cc1 text.connection-annotation');
 
     ok('default pill: the historical box, near-square',
       lblBg() && lblBg().getAttribute('fill-opacity') === '0.85' && lblBg().getAttribute('rx') === '2',
@@ -905,8 +907,13 @@ function minimapSuite(t) {
     ok('normalized off: hidden, inactive, stored "0"',
       mm().style.display === 'none' && !btn().classList.contains('active') &&
       iwin.localStorage.getItem('crosscanvas-minimap') === '0');
-    ok('mirrors all five object layers via <use>',
-      idoc.querySelectorAll('#minimap-svg use').length === 5);
+    // Every object layer the canvas paints, in canvas order - the minimap
+    // must not drop one (conn-labels-layer joined in 2026-10).
+    const mirrored = Array.from(idoc.querySelectorAll('#minimap-svg use')).map(u => u.getAttribute('href'));
+    const painted = Array.from(idoc.querySelectorAll('#canvas > g[id$="-layer"]'))
+      .map(g => '#' + g.id).filter(h => h !== '#overlay-layer');
+    ok('mirrors every object layer via <use>, in canvas order',
+      JSON.stringify(mirrored) === JSON.stringify(painted), JSON.stringify({ mirrored, painted }));
 
     // A device far out at (2000, 1500): the frame must span it. Fixture
     // first, THEN toggle on - applyMinimap frames synchronously.
@@ -1630,6 +1637,137 @@ async function annotationCenterSuite(t) {
       const off = (edRect.top + edRect.height / 2) - (lineRect.top + lineRect.height / 2);
       ok('the editor opens centered on the line, where the text will land', Math.abs(off) < 3, off.toFixed(1) + 'px off');
     }
+  });
+}
+
+// --- connection text above every line ---------------------------------------
+// Labels and annotations used to live inside their own connection's group, so
+// every connection saved after it painted over them - pill, halo and all -
+// and Bring to Front had nothing to offer. Editing one connection also
+// re-appended it, lifting it above the rest until the next full redraw, so
+// the stacking changed with every click. Now all connection text sits in
+// conn-labels-layer above every line, a redraw keeps its place, the tiers
+// govern the text layers, and the raster export paints text after all lines.
+async function connTextLayerSuite(t) {
+  const frame = document.querySelector('iframe');
+  const idoc = frame.contentDocument, iwin = frame.contentWindow;
+  const proto = iwin.CanvasRenderingContext2D.prototype;
+  const NOTE = ['Strand 7/8', 'Panel B', 'Port 12', 'To IDF 2', 'SM 1310'];
+  const run = (id, y, color, extra) => Object.assign({ id, fromDevice: null, toDevice: null,
+    fromPoint: { x: 100, y }, toPoint: { x: 500, y }, color, thickness: 4, dash: 'solid', routing: 'straight',
+    label: '', labelPosition: 'top', labelVAlign: 'top', fontSize: 14, fontColor: '#333333',
+    lineFormats: [], spans: [], startArrow: 'none', endArrow: 'none', annotations: [] }, extra || {});
+  // The annotated run is saved FIRST, so both neighbours are saved after it
+  // and cross its 5-line box: the user's busy left side of a device.
+  const doc = () => ({ version: 6, diagramTitle: 'layers', diagramVersion: 1, devices: [], textBoxes: [],
+    images: [], groups: [], deviceTemplates: [], imageTable: {}, nextId: 9,
+    zones: [{ id: 'z1', x: 560, y: 120, w: 200, h: 140, label: 'Zone Title', fill: '#e8f4fd', borderColor: '#224488', opacity: 0.5 }],
+    connections: [
+      run('mid', 200, '#2266cc', { annotations: [{ id: 'note', position: 0.5, fontSize: 16, text: NOTE.join('\n'),
+        spans: NOTE.map(x => [{ text: x, bold: false, italic: false }]) }] }),
+      run('top', 170, '#cc3333', { label: 'Fibre A', spans: [[{ text: 'Fibre A', bold: false, italic: false }]] }),
+      run('bot', 230, '#22aa44') ] });
+  t.applyDiagramData(doc());
+  const layer = id => idoc.getElementById(id);
+  const ids = el => Array.from(el.children).map(c => c.id).join(',');
+  const r = {};
+
+  // Structure and paint order.
+  const texts = Array.from(idoc.querySelectorAll('.connection-annotation, .connection-annotation-bg, .connection-label, .connection-label-bg'));
+  r.allInTextLayer = texts.length > 0 && texts.every(e => e.closest('#conn-labels-layer'));
+  r.textCount = texts.length;
+  const order = ['connections-layer', 'zone-labels-layer', 'conn-labels-layer', 'devices-layer'].map(layer);
+  r.layerOrder = order.every(Boolean) && order.every((el, i) => !i ||
+    (order[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
+  r.textGroups = ids(layer('conn-labels-layer'));
+
+  // What is actually on top where the later red line crosses the note.
+  const svg = idoc.getElementById('canvas');
+  const toClient = (x, y) => new iwin.DOMPoint(x, y).matrixTransform(svg.getScreenCTM());
+  const p = toClient(300, 230);   // the green line, saved after the note (red carries its own label here)
+  r.probeInView = p.x > 0 && p.y > 0 && p.x < iwin.innerWidth && p.y < iwin.innerHeight;
+  const hit = idoc.elementsFromPoint(p.x, p.y).find(e => e.closest && e.closest('#connections-layer, #conn-labels-layer'));
+  r.topmost = hit ? (hit.closest('#conn-labels-layer') ? 'text:' + hit.closest('g[id]').id : 'line:' + hit.closest('g[id]').id) : 'none';
+
+  // A single-connection redraw keeps its place in BOTH layers.
+  const before = { lines: ids(layer('connections-layer')), text: ids(layer('conn-labels-layer')) };
+  t.renderConnection(t.state.connections[0]);
+  r.inPlace = { before, after: { lines: ids(layer('connections-layer')), text: ids(layer('conn-labels-layer')) } };
+
+  // Pressing on text still finds its connection (label drag, annotation drag).
+  const press = el => {
+    if (!el) return false;              // not where it should be: the check below fails
+    const b = el.getBoundingClientRect();
+    const o = { bubbles: true, cancelable: true, button: 0, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 };
+    el.dispatchEvent(new iwin.MouseEvent('mousedown', o));
+    iwin.dispatchEvent(new iwin.MouseEvent('mouseup', o));
+  };
+  press(idoc.querySelector('#cl-top .connection-label-bg'));
+  r.labelSelects = t.state.selectedConnection;
+  press(idoc.querySelector('#cl-mid .connection-annotation-bg'));
+  r.annSelects = t.state.selectedAnnotation ? t.state.selectedAnnotation.connId + '/' + t.state.selectedAnnotation.annId : null;
+
+  // Editing the note hides its text where the text now lives.
+  t.applyDiagramData(doc());
+  t.state.zoom = 1; t.state.inlineEditing = null;
+  t.handleCanvasDblClick({ x: 300, y: 200 });
+  const noteEls = Array.from(idoc.querySelectorAll('#cl-mid [data-ann-id="note"]'));
+  r.editHides = noteEls.length > 0 && noteEls.every(e => e.style.display === 'none');
+  r.editing = t.state.inlineEditing && t.state.inlineEditing.annotationId;
+  t.state.inlineEditing = null;
+  idoc.querySelectorAll('#canvas-container [contenteditable]').forEach(el => el.remove());
+  t.applyDiagramData(doc());
+
+  // Tiers govern the text layers (zones too - their titles used to float).
+  const tier = (name, btn) => idoc.querySelector('.tier-row[data-tier="' + name + '"] .' + btn).click();
+  tier('connections', 'tier-eye');
+  r.connHidden = layer('conn-labels-layer').style.display === 'none';
+  tier('connections', 'tier-eye');
+  tier('connections', 'tier-lock');
+  r.connLocked = layer('conn-labels-layer').style.pointerEvents === 'none';
+  tier('connections', 'tier-lock');
+  tier('zones', 'tier-eye');
+  r.zoneTitleHidden = layer('zone-labels-layer').style.display === 'none';
+  tier('zones', 'tier-eye');
+  r.restored = layer('conn-labels-layer').style.display === '' && layer('zone-labels-layer').style.display === '' &&
+    layer('conn-labels-layer').style.pointerEvents === '';
+
+  // Raster export: every line before any connection text.
+  const seq = [];
+  const oStroke = proto.stroke, oText = proto.fillText;
+  proto.stroke = function () { seq.push('line:' + this.strokeStyle); return oStroke.apply(this, arguments); };
+  proto.fillText = function (txt) { seq.push('text:' + txt); return oText.apply(this, arguments); };
+  let out = null, err = null;
+  try { out = await t.exportRaster('png', false, false, { returnCanvas: true }); }
+  catch (e) { err = e; }
+  finally { proto.stroke = oStroke; proto.fillText = oText; }
+  const lastLine = Math.max(seq.lastIndexOf('line:#cc3333'), seq.lastIndexOf('line:#22aa44'));
+  const firstNote = seq.indexOf('text:' + NOTE[0]);
+  const zoneTitle = seq.indexOf('text:Zone Title');
+  t.applyDiagramData(doc());
+
+  suite('Connection text sits above every line', () => {
+    ok('every connection label and annotation lives in conn-labels-layer', r.allInTextLayer, r.textCount + ' text elements');
+    ok('layer order: lines, zone titles, connection text, devices', r.layerOrder);
+    ok('one text group per connection, in connection order', r.textGroups === 'cl-mid,cl-top,cl-bot', r.textGroups);
+    ok('setup: the probe point is on screen', r.probeInView);
+    ok('where a LATER line crosses the note, the note is on top', r.topmost === 'text:cl-mid', r.topmost);
+    ok('redrawing one connection keeps its place among the lines', r.inPlace.after.lines === r.inPlace.before.lines,
+      JSON.stringify(r.inPlace));
+    ok('...and its text keeps its place among the text groups', r.inPlace.after.text === r.inPlace.before.text,
+      JSON.stringify(r.inPlace));
+    ok('pressing a connection label selects that connection', r.labelSelects === 'top', String(r.labelSelects));
+    ok('pressing an annotation selects that annotation', r.annSelects === 'mid/note', String(r.annSelects));
+    ok('editing the note hides its text in the text layer', r.editHides && r.editing === 'note', String(r.editing));
+    ok('hiding Connections hides their text', r.connHidden);
+    ok('locking Connections makes their text click-through', r.connLocked);
+    ok('hiding Zones hides zone titles too', r.zoneTitleHidden);
+    ok('showing and unlocking restores both text layers', r.restored);
+    ok('the raster export ran', out && !err, err && err.message);
+    ok('export: the note is painted after every later line',
+      lastLine >= 0 && firstNote > lastLine, 'last line #' + lastLine + ', note #' + firstNote);
+    ok('export: connection text after zone titles, as on the canvas',
+      zoneTitle >= 0 && firstNote > zoneTitle, 'zone title #' + zoneTitle + ', note #' + firstNote);
   });
 }
 

@@ -589,6 +589,16 @@
     // zone, where the label halo could not help - a halo only cuts what is
     // painted before it. kiosk.html inherits this layer via the sync script.
     const zoneLabelsLayer = document.getElementById('zone-labels-layer');
+    // Connection labels and annotations live above EVERY line, in their own
+    // layer. Drawn inside their own connection's group, they sat under every
+    // connection saved after it - pill, halo and all - so a busy corner
+    // struck through an annotation and no halo could help, and Bring to Front
+    // had nothing to offer (it does not arrange connections). Above zone
+    // titles too: a connection's text is the more specific of the two. One
+    // <g id="cl-<connId>" data-conn="<connId>"> per connection, in connection
+    // order, present even when empty so a redraw can keep its place.
+    // kiosk.html inherits this layer via the sync script.
+    const connLabelsLayer = document.getElementById('conn-labels-layer');
     const overlayLayer = document.getElementById('overlay-layer');
 
     // --- Canvas tiers (Layers menu): per-tier visibility & lock ---
@@ -598,6 +608,11 @@
     // from raster exports (WYSIWYG). Locked = visible but inert: clicks pass
     // through (e.g. marquee inside a zone without grabbing it), no selection.
     const TIER_LAYER_EL = { devices: devicesLayer, connections: connectionsLayer, images: imagesLayer, zones: zonesLayer };
+    // Each tier's hoisted TEXT layer follows it. Zone titles and connection
+    // text were lifted out of their tier's layer to paint above lines, and
+    // the zone titles' move never told the tiers: hiding Zones left every
+    // title floating on the board, and locking Zones left titles clickable.
+    const TIER_TEXT_LAYER_EL = { zones: zoneLabelsLayer, connections: connLabelsLayer };
     const tierState = {
         devices: { hidden: false, locked: false },
         connections: { hidden: false, locked: false },
@@ -609,8 +624,11 @@
 
     function applyTierState() {
         Object.keys(tierState).forEach(t => {
-            TIER_LAYER_EL[t].style.display = tierState[t].hidden ? 'none' : '';
-            TIER_LAYER_EL[t].style.pointerEvents = tierState[t].locked ? 'none' : '';
+            [TIER_LAYER_EL[t], TIER_TEXT_LAYER_EL[t]].forEach(el => {
+                if (!el) return;
+                el.style.display = tierState[t].hidden ? 'none' : '';
+                el.style.pointerEvents = tierState[t].locked ? 'none' : '';
+            });
         });
         document.querySelectorAll('.tier-row').forEach(row => {
             const t = row.dataset.tier;
@@ -2909,9 +2927,34 @@
         return { fs, spans, lineH, pad, top, h, baseline: top + pad + fs };
     }
 
+    // The connection a clicked element belongs to. A line sits in its
+    // connection's own group in connections-layer (the group's id IS the
+    // connection's id, and the path carries data-conn-id); labels and
+    // annotations sit in a text group in conn-labels-layer that names its
+    // connection in data-conn. Every hit path that starts from a clicked
+    // label resolves here - walking up to the nearest g[id] now lands on the
+    // text group, whose id is NOT the connection's.
+    function connIdOfElement(el) {
+        const tg = el.closest('.conn-label-group');
+        if (tg) return tg.dataset.conn;
+        if (el.dataset && el.dataset.connId) return el.dataset.connId;
+        const g = el.closest('#connections-layer > g');
+        return g ? g.id : null;
+    }
+
     function renderConnection(conn) {
-        let existing = document.getElementById(conn.id);
+        // Redraw IN PLACE: the line group and the text group each go back
+        // exactly where they were in their layer. Appending instead lifted
+        // whatever was last edited above every other connection until the
+        // next full redraw (selecting anything redraws all, in saved order),
+        // so stacking changed with every click - an annotation looked fine
+        // right after editing it and was covered again a click later.
+        const existing = document.getElementById(conn.id);
+        const existingText = document.getElementById('cl-' + conn.id);
+        const lineSlot = existing ? existing.nextSibling : null;
+        const textSlot = existingText ? existingText.nextSibling : null;
         if (existing) existing.remove();
+        if (existingText) existingText.remove();
 
         const start = resolveConnEndpoint(conn, 'from');
         const end = resolveConnEndpoint(conn, 'to');
@@ -2995,6 +3038,11 @@
         const connGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         connGroup.id = conn.id;
         connGroup.appendChild(path);
+        // Label and annotations go to conn-labels-layer (see connLabelsLayer).
+        const textGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        textGroup.id = 'cl-' + conn.id;
+        textGroup.classList.add('conn-label-group');
+        textGroup.dataset.conn = conn.id;
 
         if (conn.label) {
             const anchor0 = connLabelAnchor(points, conn);
@@ -3043,7 +3091,7 @@
             bg.setAttribute('fill-opacity', CONN_LABEL_STYLE === 'halo' ? '0' : '0.85');
             bg.setAttribute('rx', CONN_LABEL_STYLE === 'chip' ? Math.min(12, (totalH + padding * 2 + 2) / 2) : '2');
             bg.classList.add('connection-label-bg');
-            connGroup.appendChild(bg);
+            textGroup.appendChild(bg);
 
             // Halo style: the same background-color stroke device labels use,
             // sampled where the label sits (obeys the Label Halos scope -
@@ -3080,7 +3128,7 @@
                     if (span.color && isSafeCSSColor(span.color)) tspan.setAttribute('fill', span.color);
                     text.appendChild(tspan);
                 });
-                connGroup.appendChild(text);
+                textGroup.appendChild(text);
             });
         }
 
@@ -3185,7 +3233,7 @@
                 }
                 annBg.classList.add('connection-annotation-bg');
                 annBg.dataset.annId = ann.id;
-                connGroup.appendChild(annBg);
+                textGroup.appendChild(annBg);
 
                 const annHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(annPos.x, annPos.y) : null;
                 const annHaloW = Math.min(5, Math.max(2.5, annFs * 0.18));
@@ -3220,17 +3268,23 @@
                         if (span.color && isSafeCSSColor(span.color)) tspan.setAttribute('fill', span.color);
                         annText.appendChild(tspan);
                     });
-                    connGroup.appendChild(annText);
+                    textGroup.appendChild(annText);
                 });
             });
         }
 
-        connectionsLayer.appendChild(connGroup);
+        // Back into the slots they left (a slot that went away in between
+        // means the end of the layer, which is where a new connection goes).
+        connectionsLayer.insertBefore(connGroup,
+            lineSlot && lineSlot.parentNode === connectionsLayer ? lineSlot : null);
+        connLabelsLayer.insertBefore(textGroup,
+            textSlot && textSlot.parentNode === connLabelsLayer ? textSlot : null);
     }
 
     function renderAllConnections() {
         clearConnHandles();
         connectionsLayer.innerHTML = '';
+        connLabelsLayer.innerHTML = '';
         jumpRouteCache = LINE_JUMPS ? new Map() : null;
         try {
             state.connections.forEach(renderConnection);
@@ -5729,8 +5783,8 @@
             // rescued - the reason people reach for annotations instead.
             const lblEl = e.target.closest('.connection-label, .connection-label-bg');
             if (lblEl) {
-                const lblGroup = lblEl.closest('g[id]');
-                const lblConn = lblGroup ? state.connections.find(c => c.id === lblGroup.id) : null;
+                const lblConnId = connIdOfElement(lblEl);
+                const lblConn = lblConnId ? state.connections.find(c => c.id === lblConnId) : null;
                 if (lblConn && lblConn.label) {
                     preDragSnapshot = snapshotState();
                     state.draggingLabel = { conn: lblConn, startT: connLabelT(lblConn), moved: false };
@@ -5744,9 +5798,9 @@
             // Check for annotation drag
             const annEl = e.target.closest('.connection-annotation, .connection-annotation-bg');
             if (annEl && annEl.dataset.annId) {
-                const connGroup = annEl.closest('g[id]');
-                if (connGroup) {
-                    const conn = state.connections.find(c => c.id === connGroup.id);
+                const annConnId = connIdOfElement(annEl);
+                if (annConnId) {
+                    const conn = state.connections.find(c => c.id === annConnId);
                     if (conn && conn.annotations) {
                         const ann = conn.annotations.find(a => a.id === annEl.dataset.annId);
                         if (ann) {
@@ -6124,7 +6178,7 @@
             } else {
                 const connEl = e.target.closest('.connection-line') || e.target.closest('.connection-label') || e.target.closest('.connection-label-bg');
                 if (connEl) {
-                    const connId = connEl.dataset.connId || connEl.closest('g')?.id;
+                    const connId = connIdOfElement(connEl);
                     if (connId) {
                         setTool('select');
                         clearMultiSelect();
@@ -12525,7 +12579,7 @@
         // set stays correct as chrome evolves without a hand-maintained list.
         const reservedIds = new Set();
         document.querySelectorAll('[id]').forEach(el => {
-            if (!el.closest('#devices-layer, #zones-layer, #zone-labels-layer, #connections-layer, #images-layer, #overlay-layer, #status-overlay')) {
+            if (!el.closest('#devices-layer, #zones-layer, #zone-labels-layer, #connections-layer, #conn-labels-layer, #images-layer, #overlay-layer, #status-overlay')) {
                 reservedIds.add(el.id);
             }
         });
@@ -15757,8 +15811,9 @@
                 el.classList.remove('selected', 'multi-selected');
             });
             // Hidden tiers export as displayed (WYSIWYG, matching raster)
-            [['zones', '#zones-layer'], ['images', '#images-layer'],
-             ['connections', '#connections-layer'], ['devices', '#devices-layer']]
+            [['zones', '#zones-layer'], ['zones', '#zone-labels-layer'], ['images', '#images-layer'],
+             ['connections', '#connections-layer'], ['connections', '#conn-labels-layer'],
+             ['devices', '#devices-layer']]
                 .forEach(([tier, sel]) => {
                     if (tierHidden(tier)) { const l = clone.querySelector(sel); if (l) l.remove(); }
                 });
@@ -16187,6 +16242,12 @@
         });
 
         // Draw connections - deferred; see the pasted-images note above.
+        // Each connection's label and annotations are QUEUED here and painted
+        // by drawConnTexts after every line, matching conn-labels-layer on
+        // the canvas: drawn inline, a connection's text sat under every line
+        // drawn after it.
+        const connTextPainters = [];
+        const drawConnTexts = () => connTextPainters.forEach(paint => paint());
         const drawConnections = () => expConns.forEach(conn => {
             const start = resolveConnEndpoint(conn, 'from');
             const end = resolveConnEndpoint(conn, 'to');
@@ -16278,187 +16339,191 @@
             if (startArrow !== 'none' && startMarkerSize > 2) drawArrowhead(startArrow, origStart, points[0], startMarkerSize);
             if (endArrow !== 'none' && endMarkerSize > 2) drawArrowhead(endArrow, origEnd, points[points.length - 1], endMarkerSize);
 
-            if (conn.label) {
-                const la = connLabelAnchor(points, conn);
-                const mx = la.x, my = la.y;
-                const cfs = conn.fontSize || 20;
-                const cFamily = ctxFamilyOf(conn);
-                const cSpans = conn.spans || [[{ text: conn.label, bold: false, italic: false }]];
-                const cLineH = cfs * 1.3;
+            // Text waits for every line (see drawConnTexts): queued with the
+            // route it was computed against, painted after all of them.
+            connTextPainters.push(() => {
+                if (conn.label) {
+                    const la = connLabelAnchor(points, conn);
+                    const mx = la.x, my = la.y;
+                    const cfs = conn.fontSize || 20;
+                    const cFamily = ctxFamilyOf(conn);
+                    const cSpans = conn.spans || [[{ text: conn.label, bold: false, italic: false }]];
+                    const cLineH = cfs * 1.3;
 
-                const lp = conn.labelPosition || 'top';
-                let tx = mx, ty = my, align = 'center';
-                switch (lp) {
-                    case 'top':    ty = my - cfs / 2 - 4; break;
-                    case 'bottom': ty = my + cfs + 4; break;
-                    case 'left':   tx = mx - 8; align = 'right'; ty = my + cfs / 3; break;
-                    case 'right':  tx = mx + 8; align = 'left'; ty = my + cfs / 3; break;
-                    case 'center': ty = my + cfs / 3; break;
-                }
-
-                let maxTextW = 0;
-                cSpans.forEach(lineSpans => {
-                    let lineW = 0;
-                    lineSpans.forEach(span => {
-                        let fStr = `${cfs}px ${cFamily}`;
-                        if (span.italic) fStr = 'italic ' + fStr;
-                        if (span.bold) fStr = 'bold ' + fStr;
-                        ctx.font = fStr;
-                        lineW += ctx.measureText(span.text).width;
-                    });
-                    maxTextW = Math.max(maxTextW, lineW);
-                });
-                const pad = 3;
-                const cPadX = CONN_LABEL_STYLE === 'chip' ? pad + 6 : pad;   // chip sides push out (mirrors renderConnection)
-                const cValign = conn.labelVAlign || 'top';
-                const cVertOff = -getVAlignOffset(cValign, cSpans.length, cLineH);
-                let bgX;
-                if (align === 'right') bgX = tx - maxTextW - cPadX;
-                else if (align === 'left') bgX = tx - cPadX;
-                else bgX = tx - maxTextW / 2 - cPadX;
-                const bgY = ty - cfs - pad + 2 - cVertOff;
-
-                const cBoxH = cSpans.length * cLineH + pad * 2 + 2;
-                if (CONN_LABEL_STYLE !== 'halo') {
-                    ctx.fillStyle = 'white';
-                    ctx.globalAlpha = 0.85;
-                    if (CONN_LABEL_STYLE === 'chip') {
-                        ctx.beginPath();
-                        ctx.roundRect(bgX, bgY, maxTextW + cPadX * 2, cBoxH, Math.min(12, cBoxH / 2));
-                        ctx.fill();
-                    } else {
-                        ctx.fillRect(bgX, bgY, maxTextW + cPadX * 2, cBoxH);
+                    const lp = conn.labelPosition || 'top';
+                    let tx = mx, ty = my, align = 'center';
+                    switch (lp) {
+                        case 'top':    ty = my - cfs / 2 - 4; break;
+                        case 'bottom': ty = my + cfs + 4; break;
+                        case 'left':   tx = mx - 8; align = 'right'; ty = my + cfs / 3; break;
+                        case 'right':  tx = mx + 8; align = 'left'; ty = my + cfs / 3; break;
+                        case 'center': ty = my + cfs / 3; break;
                     }
-                    ctx.globalAlpha = 1;
-                }
-                // Halo style strokes the surface color behind the glyphs -
-                // for a label sitting ON its own line, the halo is what keeps
-                // it readable, so the raster export must carry it.
-                const cHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(mx, my, RASTER_SURFACE_RGB) : null;
-                const cHaloW = Math.min(5, Math.max(2.5, cfs * 0.18));
 
-                const connFillColor = conn.fontColor || conn.color;
-                // Explicit justification (labelAlign) re-anchors lines inside
-                // the block; the block itself stays where the position put it.
-                const cExplicit = conn.labelAlign && conn.labelAlign !== 'auto' && cSpans.length > 1 ? conn.labelAlign : null;
-                const cBlockLeft = align === 'center' ? tx - maxTextW / 2 :
-                                   align === 'right' ? tx - maxTextW : tx;
-                cSpans.forEach((lineSpans, i) => {
-                    const y = ty + i * cLineH - cVertOff;
-                    let totalW = 0;
-                    lineSpans.forEach(span => {
-                        let fStr = `${cfs}px ${cFamily}`;
-                        if (span.italic) fStr = 'italic ' + fStr;
-                        if (span.bold) fStr = 'bold ' + fStr;
-                        ctx.font = fStr;
-                        totalW += ctx.measureText(span.text).width;
-                    });
-                    let startX;
-                    if (cExplicit === 'left') startX = cBlockLeft;
-                    else if (cExplicit === 'right') startX = cBlockLeft + maxTextW - totalW;
-                    else if (cExplicit === 'center') startX = cBlockLeft + (maxTextW - totalW) / 2;
-                    else if (align === 'center') startX = tx - totalW / 2;
-                    else if (align === 'right') startX = tx - totalW;
-                    else startX = tx;
-                    lineSpans.forEach(span => {
-                        let fStr = `${cfs}px ${cFamily}`;
-                        if (span.italic) fStr = 'italic ' + fStr;
-                        if (span.bold) fStr = 'bold ' + fStr;
-                        ctx.font = fStr;
-                        ctx.textAlign = 'left';
-                        if (cHalo) {
-                            ctx.strokeStyle = cHalo;
-                            ctx.lineWidth = cHaloW;
-                            ctx.lineJoin = 'round';
-                            ctx.strokeText(span.text, startX, y);
-                        }
-                        ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : connFillColor;
-                        ctx.fillText(span.text, startX, y);
-                        startX += ctx.measureText(span.text).width;
-                    });
-                });
-            }
-
-            // Draw connection annotations
-            if (conn.annotations && conn.annotations.length > 0) {
-                conn.annotations.forEach(ann => {
-                    const annPos = getPointAlongPath(points, ann.position);
-                    const annBox = annotationLayout(ann, annPos);
-                    const annFs = annBox.fs;
-                    const annSpans = annBox.spans;
-                    const annLineH = annBox.lineH;
-                    const annColor = ann.fontColor || conn.fontColor || conn.color;
-                    const aFamily = ctxFamilyOf(ann);
-
-                    // Measure widest line for the background box
-                    let annMaxW = 0;
-                    annSpans.forEach(lineSpans => {
+                    let maxTextW = 0;
+                    cSpans.forEach(lineSpans => {
                         let lineW = 0;
                         lineSpans.forEach(span => {
-                            let fStr = `${annFs}px ${aFamily}`;
+                            let fStr = `${cfs}px ${cFamily}`;
                             if (span.italic) fStr = 'italic ' + fStr;
                             if (span.bold) fStr = 'bold ' + fStr;
                             ctx.font = fStr;
                             lineW += ctx.measureText(span.text).width;
                         });
-                        annMaxW = Math.max(annMaxW, lineW);
+                        maxTextW = Math.max(maxTextW, lineW);
                     });
-                    annMaxW = Math.max(annMaxW, 20);   // min pill width, matching render + bounds
+                    const pad = 3;
+                    const cPadX = CONN_LABEL_STYLE === 'chip' ? pad + 6 : pad;   // chip sides push out (mirrors renderConnection)
+                    const cValign = conn.labelVAlign || 'top';
+                    const cVertOff = -getVAlignOffset(cValign, cSpans.length, cLineH);
+                    let bgX;
+                    if (align === 'right') bgX = tx - maxTextW - cPadX;
+                    else if (align === 'left') bgX = tx - cPadX;
+                    else bgX = tx - maxTextW / 2 - cPadX;
+                    const bgY = ty - cfs - pad + 2 - cVertOff;
 
-                    const annPad = annBox.pad;
-                    const annPadX = CONN_LABEL_STYLE === 'chip' ? annPad + 6 : annPad;
-                    const annBoxH = annBox.h;
+                    const cBoxH = cSpans.length * cLineH + pad * 2 + 2;
                     if (CONN_LABEL_STYLE !== 'halo') {
                         ctx.fillStyle = 'white';
                         ctx.globalAlpha = 0.85;
                         if (CONN_LABEL_STYLE === 'chip') {
                             ctx.beginPath();
-                            ctx.roundRect(annPos.x - annMaxW / 2 - annPadX, annBox.top,
-                                annMaxW + annPadX * 2, annBoxH, Math.min(12, annBoxH / 2));
+                            ctx.roundRect(bgX, bgY, maxTextW + cPadX * 2, cBoxH, Math.min(12, cBoxH / 2));
                             ctx.fill();
                         } else {
-                            ctx.fillRect(annPos.x - annMaxW / 2 - annPadX, annBox.top,
-                                annMaxW + annPadX * 2, annBoxH);
+                            ctx.fillRect(bgX, bgY, maxTextW + cPadX * 2, cBoxH);
                         }
                         ctx.globalAlpha = 1;
                     }
-                    const aHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(annPos.x, annPos.y, RASTER_SURFACE_RGB) : null;
-                    const aHaloW = Math.min(5, Math.max(2.5, annFs * 0.18));
+                    // Halo style strokes the surface color behind the glyphs -
+                    // for a label sitting ON its own line, the halo is what keeps
+                    // it readable, so the raster export must carry it.
+                    const cHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(mx, my, RASTER_SURFACE_RGB) : null;
+                    const cHaloW = Math.min(5, Math.max(2.5, cfs * 0.18));
 
-                    const annExplicit = ann.align && ann.align !== 'center' && annSpans.length > 1 ? ann.align : null;
-                    const annBlockLeft = annPos.x - annMaxW / 2;
-                    annSpans.forEach((lineSpans, i) => {
-                        const y = annBox.baseline + i * annLineH;
-                        let lineW = 0;
+                    const connFillColor = conn.fontColor || conn.color;
+                    // Explicit justification (labelAlign) re-anchors lines inside
+                    // the block; the block itself stays where the position put it.
+                    const cExplicit = conn.labelAlign && conn.labelAlign !== 'auto' && cSpans.length > 1 ? conn.labelAlign : null;
+                    const cBlockLeft = align === 'center' ? tx - maxTextW / 2 :
+                                       align === 'right' ? tx - maxTextW : tx;
+                    cSpans.forEach((lineSpans, i) => {
+                        const y = ty + i * cLineH - cVertOff;
+                        let totalW = 0;
                         lineSpans.forEach(span => {
-                            let fStr = `${annFs}px ${aFamily}`;
+                            let fStr = `${cfs}px ${cFamily}`;
                             if (span.italic) fStr = 'italic ' + fStr;
                             if (span.bold) fStr = 'bold ' + fStr;
                             ctx.font = fStr;
-                            lineW += ctx.measureText(span.text).width;
+                            totalW += ctx.measureText(span.text).width;
                         });
-                        let startX = annExplicit === 'left' ? annBlockLeft :
-                                     annExplicit === 'right' ? annBlockLeft + annMaxW - lineW :
-                                     annPos.x - lineW / 2;
+                        let startX;
+                        if (cExplicit === 'left') startX = cBlockLeft;
+                        else if (cExplicit === 'right') startX = cBlockLeft + maxTextW - totalW;
+                        else if (cExplicit === 'center') startX = cBlockLeft + (maxTextW - totalW) / 2;
+                        else if (align === 'center') startX = tx - totalW / 2;
+                        else if (align === 'right') startX = tx - totalW;
+                        else startX = tx;
                         lineSpans.forEach(span => {
-                            let fStr = `${annFs}px ${aFamily}`;
+                            let fStr = `${cfs}px ${cFamily}`;
                             if (span.italic) fStr = 'italic ' + fStr;
                             if (span.bold) fStr = 'bold ' + fStr;
                             ctx.font = fStr;
                             ctx.textAlign = 'left';
-                            if (aHalo) {
-                                ctx.strokeStyle = aHalo;
-                                ctx.lineWidth = aHaloW;
+                            if (cHalo) {
+                                ctx.strokeStyle = cHalo;
+                                ctx.lineWidth = cHaloW;
                                 ctx.lineJoin = 'round';
                                 ctx.strokeText(span.text, startX, y);
                             }
-                            ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : annColor;
+                            ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : connFillColor;
                             ctx.fillText(span.text, startX, y);
                             startX += ctx.measureText(span.text).width;
                         });
                     });
-                });
-            }
+                }
+
+                // Draw connection annotations
+                if (conn.annotations && conn.annotations.length > 0) {
+                    conn.annotations.forEach(ann => {
+                        const annPos = getPointAlongPath(points, ann.position);
+                        const annBox = annotationLayout(ann, annPos);
+                        const annFs = annBox.fs;
+                        const annSpans = annBox.spans;
+                        const annLineH = annBox.lineH;
+                        const annColor = ann.fontColor || conn.fontColor || conn.color;
+                        const aFamily = ctxFamilyOf(ann);
+
+                        // Measure widest line for the background box
+                        let annMaxW = 0;
+                        annSpans.forEach(lineSpans => {
+                            let lineW = 0;
+                            lineSpans.forEach(span => {
+                                let fStr = `${annFs}px ${aFamily}`;
+                                if (span.italic) fStr = 'italic ' + fStr;
+                                if (span.bold) fStr = 'bold ' + fStr;
+                                ctx.font = fStr;
+                                lineW += ctx.measureText(span.text).width;
+                            });
+                            annMaxW = Math.max(annMaxW, lineW);
+                        });
+                        annMaxW = Math.max(annMaxW, 20);   // min pill width, matching render + bounds
+
+                        const annPad = annBox.pad;
+                        const annPadX = CONN_LABEL_STYLE === 'chip' ? annPad + 6 : annPad;
+                        const annBoxH = annBox.h;
+                        if (CONN_LABEL_STYLE !== 'halo') {
+                            ctx.fillStyle = 'white';
+                            ctx.globalAlpha = 0.85;
+                            if (CONN_LABEL_STYLE === 'chip') {
+                                ctx.beginPath();
+                                ctx.roundRect(annPos.x - annMaxW / 2 - annPadX, annBox.top,
+                                    annMaxW + annPadX * 2, annBoxH, Math.min(12, annBoxH / 2));
+                                ctx.fill();
+                            } else {
+                                ctx.fillRect(annPos.x - annMaxW / 2 - annPadX, annBox.top,
+                                    annMaxW + annPadX * 2, annBoxH);
+                            }
+                            ctx.globalAlpha = 1;
+                        }
+                        const aHalo = CONN_LABEL_STYLE === 'halo' && haloEnabledFor('conn') ? surfaceColorAt(annPos.x, annPos.y, RASTER_SURFACE_RGB) : null;
+                        const aHaloW = Math.min(5, Math.max(2.5, annFs * 0.18));
+
+                        const annExplicit = ann.align && ann.align !== 'center' && annSpans.length > 1 ? ann.align : null;
+                        const annBlockLeft = annPos.x - annMaxW / 2;
+                        annSpans.forEach((lineSpans, i) => {
+                            const y = annBox.baseline + i * annLineH;
+                            let lineW = 0;
+                            lineSpans.forEach(span => {
+                                let fStr = `${annFs}px ${aFamily}`;
+                                if (span.italic) fStr = 'italic ' + fStr;
+                                if (span.bold) fStr = 'bold ' + fStr;
+                                ctx.font = fStr;
+                                lineW += ctx.measureText(span.text).width;
+                            });
+                            let startX = annExplicit === 'left' ? annBlockLeft :
+                                         annExplicit === 'right' ? annBlockLeft + annMaxW - lineW :
+                                         annPos.x - lineW / 2;
+                            lineSpans.forEach(span => {
+                                let fStr = `${annFs}px ${aFamily}`;
+                                if (span.italic) fStr = 'italic ' + fStr;
+                                if (span.bold) fStr = 'bold ' + fStr;
+                                ctx.font = fStr;
+                                ctx.textAlign = 'left';
+                                if (aHalo) {
+                                    ctx.strokeStyle = aHalo;
+                                    ctx.lineWidth = aHaloW;
+                                    ctx.lineJoin = 'round';
+                                    ctx.strokeText(span.text, startX, y);
+                                }
+                                ctx.fillStyle = (span.color && isSafeCSSColor(span.color)) ? span.color : annColor;
+                                ctx.fillText(span.text, startX, y);
+                                startX += ctx.measureText(span.text).width;
+                            });
+                        });
+                    });
+                }
+            });
         });
 
         // Zone labels paint ABOVE connections on the live canvas (their own
@@ -16492,9 +16557,11 @@
                 drawObjLabelToCanvas(ctx, img, '#333', 'image');
             });
             // Now the layer order the live SVG paints: zones, images,
-            // connections, zone labels, then devices and text in the next step.
+            // connections, zone labels, connection text, then devices and
+            // text boxes in the next step.
             drawConnections();
             drawZoneLabels();
+            drawConnTexts();
             return Promise.all(imagePromises);
         }).then(results => {
             const imgByDevice = new Map(results.map(r => [r.device, r.img]));
@@ -16873,7 +16940,7 @@
             const node = document.getElementById(id);
             if (node) node.querySelectorAll('text').forEach(t => t.style.display = 'none');
         } else if (type === 'connection') {
-            const node = document.getElementById(id);
+            const node = document.getElementById('cl-' + id);   // its text group (conn-labels-layer)
             if (node) {
                 node.querySelectorAll('.connection-label, .connection-label-bg').forEach(el => el.style.display = 'none');
             }
@@ -16881,7 +16948,7 @@
     }
 
     function showOriginalLabel(type, id) {
-        const node = document.getElementById(id);
+        const node = document.getElementById(type === 'connection' ? 'cl-' + id : id);
         if (!node) return;
         if (type === 'connection') {
             node.querySelectorAll('.connection-label, .connection-label-bg').forEach(el => el.style.display = '');
@@ -17139,7 +17206,7 @@
                     const annFs = hitAnn.fontSize || DEFAULT_FONT_SIZE;
                     if (!hitAnn.spans) hitAnn.spans = [[{ text: hitAnn.text || '', bold: false, italic: false }]];
                     // Hide just this annotation
-                    const connNode = document.getElementById(conn.id);
+                    const connNode = document.getElementById('cl-' + conn.id);   // text group
                     if (connNode) {
                         connNode.querySelectorAll(`.connection-annotation[data-ann-id="${hitAnn.id}"], .connection-annotation-bg[data-ann-id="${hitAnn.id}"]`).forEach(el => el.style.display = 'none');
                     }
@@ -17232,7 +17299,7 @@
                 // Open inline editor for the new annotation
                 const annPos = getPointAlongPath(cPoints, newAnn.position);
                 const annFs = newAnn.fontSize;
-                const connNode = document.getElementById(conn.id);
+                const connNode = document.getElementById('cl-' + conn.id);   // text group
                 if (connNode) {
                     connNode.querySelectorAll(`.connection-annotation[data-ann-id="${newAnn.id}"], .connection-annotation-bg[data-ann-id="${newAnn.id}"]`).forEach(el => el.style.display = 'none');
                 }
@@ -17526,6 +17593,7 @@
             // resolution in front of it, so a test can compute a connection's
             // polyline exactly as the renderer does.
             connRoutePoints, resolveConnEndpoint, roundedRoute, routeOrthogonal, getAbsoluteAP, findNode,
+            renderConnection,
             refitBendsToPath, setNodeAPCount, feasibleAPMax, floatingAPIndex,
             adoptAvoidedSkeleton, classicOrthogonal, convertWaypointsToBends,
             // label placement along that polyline (conn.labelT)
