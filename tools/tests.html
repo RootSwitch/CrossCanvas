@@ -336,6 +336,8 @@ async function run(t) {
   await clipboardSuite(t);
   await rasterOrderSuite(t);
   await rasterFidelitySuite(t);
+  gliffyStencilColorSuite(t);
+  await annotationCenterSuite(t);
   await corpusSuite(t);
   render();
 }
@@ -1509,6 +1511,125 @@ async function rasterFidelitySuite(t) {
     ok('the fillet is inked where the curve passes (197.5, 102.5)', R.px(197, 102)[0] < 160, JSON.stringify(R.px(197, 102)));
     ok('the corner pixel itself is CLEAR - filleted, not sharp',
       R.px(200, 100)[0] > 240 && R.px(200, 100)[1] > 240, JSON.stringify(R.px(200, 100)));
+  });
+}
+
+// --- Gliffy stencil colors --------------------------------------------------
+// A stencil's fillColor is its color in Gliffy. The importer used to ignore
+// it, so a purple or red device came in stock blue. Now any color the author
+// chose becomes the device's tint, while the library's own default imports
+// untinted (it follows the theme, as every import always has).
+function gliffyStencilColorSuite(t) {
+  const V4 = 'com.gliffy.stencil.network.network_v4.business.';
+  const shape = (id, x, tid, fill) => ({ id, uid: 'u' + id, x, y: 100, width: 60, height: 60, rotation: 0,
+    graphic: { type: 'Shape', Shape: { tid, fillColor: fill, strokeColor: '#000000', strokeWidth: 2,
+      opacity: 1, gradient: false, dropShadow: false, state: 0, shadowX: 0, shadowY: 0 } }, children: [] });
+  t.importGliffy({ contentType: 'application/gliffy+json', version: '1.3', stage: { objects: [
+    shape(1, 100, V4 + 'switch', '#3966A0'),
+    shape(2, 200, V4 + 'switch', '#800080'),
+    shape(3, 300, V4 + 'server', '#CC0000'),
+    shape(4, 400, 'gstencil.twemoji_v1.objects.battery', '#3a3a3a'),
+    shape(5, 500, V4 + 'server', '#FFFFFF') ] } }, 'colors.gliffy', true);
+  const devs = t.state.devices.slice().sort((a, b) => a.x - b.x);
+  const svgOf = url => { try { return atob(url.split(',')[1]); } catch (e) { return ''; } };
+  suite('Gliffy import keeps stencil colors', () => {
+    ok('five stencils imported as devices', devs.length === 5, devs.length + ' devices');
+    if (devs.length !== 5) return;
+    ok('the library default (#3966A0) imports untinted, following the theme',
+      devs[0].tintColor === null && devs[0].image === devs[0].originalImage, String(devs[0].tintColor));
+    ok('a purple stencil imports tinted purple', devs[1].tintColor === '#800080', String(devs[1].tintColor));
+    ok('...and its icon is recolored, not just the frame',
+      devs[1].image !== devs[1].originalImage && svgOf(devs[1].image).includes('#800080'));
+    ok('an uppercase source color is normalized for the color picker', devs[2].tintColor === '#cc0000', String(devs[2].tintColor));
+    ok('a twemoji object (multi-color, its fill is not its color) never tints', devs[3].tintColor === null, String(devs[3].tintColor));
+    ok('a white fill (an image stencil backdrop) does not tint', devs[4].tintColor === null, String(devs[4].tintColor));
+  });
+}
+
+// --- annotation layout: centered on the line ---------------------------------
+// The text block sits CENTERED on the annotation's anchor. It used to put the
+// first baseline on the anchor and grow downward, so on a horizontal line a
+// 5-line note had the line through its FIRST line and 93px hanging below.
+// Pinned on the canvas, in the raster export (which must match the canvas),
+// in the export bounds, and where the inline editor opens.
+async function annotationCenterSuite(t) {
+  const frame = document.querySelector('iframe');
+  const idoc = frame.contentDocument;
+  const proto = frame.contentWindow.CanvasRenderingContext2D.prototype;
+  const LINE_Y = 150, FS = 16;
+  const linesOf = (id, n) => Array.from({ length: n }, (_, i) => id + ' L' + (i + 1));
+  const conn = (id, x0, n) => ({ id, fromDevice: null, toDevice: null,
+    fromPoint: { x: x0, y: LINE_Y }, toPoint: { x: x0 + 200, y: LINE_Y },
+    color: '#cc3333', thickness: 3, dash: 'solid', routing: 'straight',
+    label: '', labelPosition: 'top', labelVAlign: 'top', fontSize: 14, fontColor: '#333333',
+    lineFormats: [], spans: [], startArrow: 'none', endArrow: 'none',
+    annotations: [{ id: id + 'a', position: 0.5, fontSize: FS, text: linesOf(id, n).join('\n'),
+      spans: linesOf(id, n).map(s => [{ text: s, bold: false, italic: false }]) }] });
+  const doc = () => ({ version: 6, diagramTitle: 'ann', diagramVersion: 1, devices: [], zones: [],
+    textBoxes: [], images: [], groups: [], deviceTemplates: [], imageTable: {}, nextId: 9,
+    connections: [conn('a1', 100, 1), conn('a3', 350, 3), conn('a5', 600, 5)] });
+  t.applyDiagramData(doc());
+
+  const geo = id => {
+    const bb = idoc.querySelector('.connection-annotation-bg[data-ann-id="' + id + 'a"]').getBBox();
+    const texts = Array.from(idoc.querySelectorAll('.connection-annotation[data-ann-id="' + id + 'a"]'));
+    const mid = texts[Math.floor(texts.length / 2)].getBBox();
+    return { box: bb.y + bb.height / 2 - LINE_Y, mid: mid.y + mid.height / 2 - LINE_Y,
+             above: LINE_Y - bb.y, below: bb.y + bb.height - LINE_Y,
+             ys: texts.map(e => +e.getAttribute('y')) };
+  };
+  const G = { a1: geo('a1'), a3: geo('a3'), a5: geo('a5') };
+
+  // Export with the box and glyph draws spied: the 0.85-alpha fillRect is
+  // the pill, fillText's y is each line's baseline.
+  const boxes = [], texts = {};
+  const oRect = proto.fillRect, oText = proto.fillText;
+  proto.fillRect = function (x, y, w, h) {
+    if (Math.abs(this.globalAlpha - 0.85) < 0.01) boxes.push({ y, h });
+    return oRect.apply(this, arguments);
+  };
+  proto.fillText = function (txt, x, y) { texts[txt] = y; return oText.apply(this, arguments); };
+  let out = null, err = null;
+  try { out = await t.exportRaster('png', false, false, { returnCanvas: true }); }
+  catch (e) { err = e; }
+  finally { proto.fillRect = oRect; proto.fillText = oText; }
+
+  // Inline editor over the 5-line note: double-click its anchor.
+  t.state.zoom = 1;
+  t.state.inlineEditing = null;
+  const lineEl = idoc.getElementById('a5') && idoc.getElementById('a5').querySelector('path');
+  const lineRect = lineEl ? lineEl.getBoundingClientRect() : null;
+  t.handleCanvasDblClick({ x: 700, y: LINE_Y });
+  const ed = idoc.querySelector('#canvas-container .inline-editor');
+  const edRect = ed ? ed.getBoundingClientRect() : null;
+  const ie = t.state.inlineEditing;
+  t.state.inlineEditing = null;
+  idoc.querySelectorAll('#canvas-container [contenteditable]').forEach(el => el.remove());
+  t.applyDiagramData(doc());
+
+  suite('Annotations center on their line', () => {
+    ['a1', 'a3', 'a5'].forEach(id => {
+      ok(id + ': the box is centered on the line', Math.abs(G[id].box) < 0.5, G[id].box.toFixed(1) + 'px off');
+      ok(id + ': the middle line of text is centered on the line', Math.abs(G[id].mid) < 4, G[id].mid.toFixed(1) + 'px off');
+    });
+    ok('5 lines: the box reaches as far above the line as below it',
+      Math.abs(G.a5.above - G.a5.below) < 0.5, G.a5.above.toFixed(1) + ' above, ' + G.a5.below.toFixed(1) + ' below');
+    ok('the raster export ran', out && !err, err && err.message);
+    if (!out) return;
+    ok('export: three annotation boxes, each centered on the line',
+      boxes.length === 3 && boxes.every(b => Math.abs(b.y + b.h / 2 - LINE_Y) < 0.5), JSON.stringify(boxes));
+    const exportYs = id => linesOf(id, G[id].ys.length).map(s => texts[s]);
+    ok('export: every baseline matches the canvas exactly',
+      ['a1', 'a3', 'a5'].every(id => JSON.stringify(exportYs(id)) === JSON.stringify(G[id].ys)),
+      JSON.stringify({ canvas: G.a5.ys, export: exportYs('a5') }));
+    ok('export bounds take in the box above the line (no crop)',
+      out.offY <= LINE_Y - G.a5.above - 40 + 0.5, 'offY ' + out.offY + ', box top ' + (LINE_Y - G.a5.above));
+    ok('double-click opened the editor on the 5-line note', !!ed && ie && ie.annotationId === 'a5a',
+      ie ? ie.annotationId : 'no editor');
+    if (ed && lineRect) {
+      const off = (edRect.top + edRect.height / 2) - (lineRect.top + lineRect.height / 2);
+      ok('the editor opens centered on the line, where the text will land', Math.abs(off) < 3, off.toFixed(1) + 'px off');
+    }
   });
 }
 

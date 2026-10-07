@@ -3,6 +3,25 @@
 Compiled from the project's commit history and grouped into rough phases;
 entries are organized by theme rather than by release number.
 
+**Unreleased (post-4.1.0)**: **Annotations center on their line, and Gliffy
+stencils keep their colors.** A multi-line annotation used to hang from its
+connection: the first line sat on the line and every further line stacked below,
+so on a horizontal run a 5-line note had the line through its FIRST line and
+93px of box hanging into whatever sat underneath. The block is now centered on
+its anchor - the line runs through the middle line of text, and through the
+middle of the glyphs of a one-line note - on the canvas, in PNG/JPEG/PDF, in the
+export bounds, and where the inline editor opens, all from one shared layout so
+they cannot drift. Existing boards shift accordingly: multi-line annotations move
+up by half their extra lines, one-line annotations a few pixels down. Separately,
+the Gliffy importer ignored each stencil's own color, so a purple or red device
+imported in stock blue. A color the author chose now becomes the device's tint,
+exactly as if Device Color had been set to it; a stencil in its library's
+default color (Gliffy's network blue) still imports untinted and follows the
+theme. tools/tests.html pins both: box and middle line centered for 1, 3 and 5
+lines, export baselines equal to the canvas's, the editor opening on the line,
+and default, chosen, emoji and white stencil fills each importing as they
+should.
+
 **Unreleased (post-4.1.0)**: **Rounded connections export with every corner
 rounded.** On boards imported from Gliffy, one bend per rounded connection came
 out sharp in PNG, JPEG and PDF while the canvas drew it rounded. The importer

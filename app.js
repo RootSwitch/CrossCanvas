@@ -2889,6 +2889,26 @@
     }
 
     // --- Connection Rendering ---
+    // Where an annotation's text block sits around its anchor on the path -
+    // the canvas, the raster export, the export bounds and both inline editors
+    // all read it here. The block is CENTERED on the anchor: a horizontal line
+    // runs through the middle line of a 5-line annotation, and through the
+    // middle of the glyphs of a 1-line one. It used to put the FIRST baseline
+    // on the anchor and stack every further line below, so the box always
+    // reached the same 19px above the line and grew only downward - the line
+    // ran through line 1 of 5, and a multi-line note hung into whatever sat
+    // under it. The box keeps its old shape (3px padding, 2px slack, first
+    // baseline one font size below the padding); only its placement moved.
+    function annotationLayout(ann, pos) {
+        const fs = ann.fontSize || DEFAULT_FONT_SIZE;
+        const spans = ann.spans || [[{ text: ann.text || '', bold: false, italic: false }]];
+        const lineH = fs * 1.3;
+        const pad = 3;
+        const h = spans.length * lineH + pad * 2 + 2;
+        const top = pos.y - h / 2;
+        return { fs, spans, lineH, pad, top, h, baseline: top + pad + fs };
+    }
+
     function renderConnection(conn) {
         let existing = document.getElementById(conn.id);
         if (existing) existing.remove();
@@ -3138,10 +3158,10 @@
         if (conn.annotations && conn.annotations.length > 0) {
             conn.annotations.forEach(ann => {
                 const annPos = getPointAlongPath(points, ann.position);
-                const annFs = ann.fontSize || DEFAULT_FONT_SIZE;
-                const annSpans = ann.spans || [[{ text: ann.text || '', bold: false, italic: false }]];
-                const annLineHeight = annFs * 1.3;
-                const annTotalH = annSpans.length * annLineHeight;
+                const annBox = annotationLayout(ann, annPos);
+                const annFs = annBox.fs;
+                const annSpans = annBox.spans;
+                const annLineHeight = annBox.lineH;
 
                 // Background rect (real measured width - matches the export)
                 const padding = 3;
@@ -3152,12 +3172,12 @@
                 const annPadX = CONN_LABEL_STYLE === 'chip' ? padding + 6 : padding;
                 const annBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 annBg.setAttribute('x', annPos.x - annTextW / 2 - annPadX);
-                annBg.setAttribute('y', annPos.y - annFs - padding);
+                annBg.setAttribute('y', annBox.top);
                 annBg.setAttribute('width', annTextW + annPadX * 2);
-                annBg.setAttribute('height', annTotalH + padding * 2 + 2);
+                annBg.setAttribute('height', annBox.h);
                 annBg.setAttribute('fill', 'white');
                 annBg.setAttribute('fill-opacity', CONN_LABEL_STYLE === 'halo' ? '0' : '0.85');
-                annBg.setAttribute('rx', CONN_LABEL_STYLE === 'chip' ? Math.min(12, (annTotalH + padding * 2 + 2) / 2) : '2');
+                annBg.setAttribute('rx', CONN_LABEL_STYLE === 'chip' ? Math.min(12, annBox.h / 2) : '2');
                 if (isSelAnn) {
                     annBg.setAttribute('stroke', '#0066cc');
                     annBg.setAttribute('stroke-width', '1.5');
@@ -3179,7 +3199,7 @@
                 annSpans.forEach((lineSpans, i) => {
                     const annText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                     annText.setAttribute('x', annX);
-                    annText.setAttribute('y', annPos.y + i * annLineHeight);
+                    annText.setAttribute('y', annBox.baseline + i * annLineHeight);
                     annText.setAttribute('text-anchor', annAnchor);
                     annText.setAttribute('font-size', annFs);
                     if (aff) annText.setAttribute('font-family', aff);
@@ -10666,6 +10686,31 @@
         const stencilMap = IMPORT_STENCIL_MAP;
 
         // Find the template for a Gliffy stencil (null = use the generic icon)
+        // A stencil's own color comes across as the device's tint, exactly as
+        // if Device Color had been set to it - unless it is the color the
+        // stencil's library draws in by default. Those import untinted, so
+        // they follow the theme like any placed device, and a board drawn in
+        // stock colors looks as it always did. Gliffy stores the color as the
+        // shape's fillColor; the network_v4 libraries (business and home)
+        // default to #3966A0. The twemoji objects carry #3a3a3a, but they are
+        // multi-color emoji - that fill is not their color - so they never
+        // tint. A white fill is skipped too: it is an image stencil's
+        // backdrop, and as a tint it would paint the glyph onto the white
+        // face where it vanishes. Raster icons cannot be tinted at all.
+        // Until 2026-10 the importer ignored fillColor entirely, so a purple
+        // or red Gliffy device imported in the stock blue.
+        const GLIFFY_DEFAULT_FILLS = ['#3966a0'];
+        function gliffyStencilTint(shape, icon) {
+            if (!shape || /^gstencil\.twemoji/.test(shape.tid || '')) return null;
+            if (!isSVGDataURL(icon)) return null;
+            const rgb = parseColorToRGB(String(shape.fillColor || '').trim());
+            if (!rgb) return null;
+            const hex = '#' + rgb.slice(0, 3).map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+            if (GLIFFY_DEFAULT_FILLS.includes(hex)) return null;
+            if (rgb[0] + rgb[1] + rgb[2] > 720) return null;
+            return hex;
+        }
+
         function resolveTemplate(tid) {
             if (!tid) return null;
             // Extract the last part of the stencil ID (e.g. "server", "switch", "camera")
@@ -10944,10 +10989,11 @@
                 const dw = Math.round(obj.width) || DEVICE_SIZE;
                 const dh = Math.round(obj.height) || DEVICE_SIZE;
                 const gIcon = template ? template.image : TEMPLATE_ICON;
+                const gTint = gliffyStencilTint(obj.graphic.Shape, gIcon);
                 const device = {
                     id: genId(),
                     templateId: template ? template.id : null,
-                    image: gIcon,
+                    image: gTint ? tintSVG(gIcon, gTint) : gIcon,
                     originalImage: gIcon,
                     x: obj.x || 0,
                     y: obj.y || 0,
@@ -10963,7 +11009,7 @@
                     labelAlign: label.align || undefined,
                     lineFormats: [],
                     spans: label.spans,
-                    tintColor: null,
+                    tintColor: gTint,
                     attachmentPoints: distributeAttachmentPoints(dw, dh, 16)
                 };
                 gliffyIdToAppId[obj.id] = device.id;
@@ -13959,13 +14005,12 @@
             }
             (conn.annotations || []).forEach(ann => {
                 const pos = getPointAlongPath(points, ann.position);
-                const fs = ann.fontSize || DEFAULT_FONT_SIZE;
-                const spans = ann.spans || [[{ text: ann.text || '', bold: false, italic: false }]];
-                const w = Math.max(ctxSpansWidth(mctx, spans, fs, ctxFamilyOf(ann)), 20);
+                const box = annotationLayout(ann, pos);
+                const w = Math.max(ctxSpansWidth(mctx, box.spans, box.fs, ctxFamilyOf(ann)), 20);
                 minX = Math.min(minX, pos.x - w / 2 - 3);
                 maxX = Math.max(maxX, pos.x + w / 2 + 3);
-                minY = Math.min(minY, pos.y - fs - 3);
-                maxY = Math.max(maxY, pos.y - fs - 3 + spans.length * fs * 1.3 + 8);
+                minY = Math.min(minY, box.top);
+                maxY = Math.max(maxY, box.top + box.h);
             });
         });
 
@@ -16338,9 +16383,10 @@
             if (conn.annotations && conn.annotations.length > 0) {
                 conn.annotations.forEach(ann => {
                     const annPos = getPointAlongPath(points, ann.position);
-                    const annFs = ann.fontSize || DEFAULT_FONT_SIZE;
-                    const annSpans = ann.spans || [[{ text: ann.text || '', bold: false, italic: false }]];
-                    const annLineH = annFs * 1.3;
+                    const annBox = annotationLayout(ann, annPos);
+                    const annFs = annBox.fs;
+                    const annSpans = annBox.spans;
+                    const annLineH = annBox.lineH;
                     const annColor = ann.fontColor || conn.fontColor || conn.color;
                     const aFamily = ctxFamilyOf(ann);
 
@@ -16359,19 +16405,19 @@
                     });
                     annMaxW = Math.max(annMaxW, 20);   // min pill width, matching render + bounds
 
-                    const annPad = 3;
+                    const annPad = annBox.pad;
                     const annPadX = CONN_LABEL_STYLE === 'chip' ? annPad + 6 : annPad;
-                    const annBoxH = annSpans.length * annLineH + annPad * 2 + 2;
+                    const annBoxH = annBox.h;
                     if (CONN_LABEL_STYLE !== 'halo') {
                         ctx.fillStyle = 'white';
                         ctx.globalAlpha = 0.85;
                         if (CONN_LABEL_STYLE === 'chip') {
                             ctx.beginPath();
-                            ctx.roundRect(annPos.x - annMaxW / 2 - annPadX, annPos.y - annFs - annPad,
+                            ctx.roundRect(annPos.x - annMaxW / 2 - annPadX, annBox.top,
                                 annMaxW + annPadX * 2, annBoxH, Math.min(12, annBoxH / 2));
                             ctx.fill();
                         } else {
-                            ctx.fillRect(annPos.x - annMaxW / 2 - annPadX, annPos.y - annFs - annPad,
+                            ctx.fillRect(annPos.x - annMaxW / 2 - annPadX, annBox.top,
                                 annMaxW + annPadX * 2, annBoxH);
                         }
                         ctx.globalAlpha = 1;
@@ -16382,7 +16428,7 @@
                     const annExplicit = ann.align && ann.align !== 'center' && annSpans.length > 1 ? ann.align : null;
                     const annBlockLeft = annPos.x - annMaxW / 2;
                     annSpans.forEach((lineSpans, i) => {
-                        const y = annPos.y + i * annLineH;
+                        const y = annBox.baseline + i * annLineH;
                         let lineW = 0;
                         lineSpans.forEach(span => {
                             let fStr = `${annFs}px ${aFamily}`;
@@ -17110,7 +17156,7 @@
                     const container = document.getElementById('canvas-container');
                     const z = state.zoom;
                     const pixelX = annPos.x * z;
-                    const pixelY = (annPos.y - annFs) * z;
+                    const pixelY = annPos.y * z;
                     const div = document.createElement('div');
                     div.className = 'inline-editor';
                     div.contentEditable = 'true';
@@ -17118,7 +17164,7 @@
                     div.style.textAlign = 'center';
                     div.style.left = pixelX + 'px';
                     div.style.top = pixelY + 'px';
-                    div.style.transform = 'translateX(-50%)';
+                    div.style.transform = 'translate(-50%, -50%)';   // centered, like the block (annotationLayout)
                     const spans = hitAnn.spans || [[{ text: hitAnn.text || '', bold: false, italic: false }]];
                     div.innerHTML = spansToHTML(spans);
                     state.inlineEditing.element = div;
@@ -17202,7 +17248,7 @@
                 // Content coordinates - the editor scrolls with the container
                 // (see startInlineEdit).
                 const pixelX = annPos.x * z;
-                const pixelY = (annPos.y - annFs) * z;
+                const pixelY = annPos.y * z;
                 const div = document.createElement('div');
                 div.className = 'inline-editor';
                 div.contentEditable = 'true';
@@ -17210,7 +17256,7 @@
                 div.style.textAlign = 'center';
                 div.style.left = pixelX + 'px';
                 div.style.top = pixelY + 'px';
-                div.style.transform = 'translateX(-50%)';
+                div.style.transform = 'translate(-50%, -50%)';   // centered, like the block (annotationLayout)
                 div.innerHTML = '';
                 state.inlineEditing.element = div;
                 container.appendChild(div);
